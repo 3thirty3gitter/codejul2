@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
+import FileSearchPanel from './components/FileSearchPanel';
 import FileExplorer from './components/FileExplorer';
+import FileHistoryPanel from './components/FileHistoryPanel';
+import BranchPanel from './components/BranchPanel';
+import RollbackPanel from './components/RollbackPanel';
 import EditorTabs from './components/EditorTabs';
 import CodeEditor from './components/CodeEditor';
 import PreviewPane from './components/PreviewPane';
@@ -8,6 +12,7 @@ import UserSettingsModal from './components/UserSettingsModal';
 import Toast from './components/Toast';
 import VersionControlPanel from './components/VersionControlPanel';
 import VisualEditorPanel from './components/VisualEditorPanel';
+import RunPanel from './components/RunPanel';
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -20,8 +25,12 @@ export default function App() {
 
   return (
     <div className='min-h-screen bg-gray-950 flex flex-row items-stretch'>
-      <div className='w-72 p-4'>
+      <div className='w-72 p-4 flex flex-col gap-4'>
+        <FileSearchPanel />
         <FileExplorer />
+        <FileHistoryPanel />
+        <BranchPanel />
+        <RollbackPanel />
       </div>
       <div className='flex-1 flex flex-col p-8'>
         <div className='flex justify-end mb-2'>
@@ -39,6 +48,7 @@ export default function App() {
         <VersionControlPanel />
         <VisualEditorPanel />
         <DeploymentControls onDeploy={handleDeploy} />
+        <RunPanel />
         <EditorTabs />
         <div className='flex flex-row gap-6 flex-1'>
           <div className='w-1/2 h-[500px] flex flex-col'>
