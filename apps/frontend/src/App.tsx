@@ -67,3 +67,5 @@ export default function App() {
 }
 import BeautifulFrontendUI from "@/components/BeautifulFrontendUI";
 // Use <BeautifulFrontendUI /> in your render tree
+import ChatPanel from "@/components/ChatPanel";
+// Use <ChatPanel /> in your render tree
