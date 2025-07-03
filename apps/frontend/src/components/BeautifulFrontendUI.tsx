@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 
-// Sidebar navigation items
 const navItems = [
   { label: "Dashboard", icon: "layout-dashboard" },
   { label: "Projects", icon: "folder-open" },
@@ -9,7 +8,6 @@ const navItems = [
   { label: "Settings", icon: "settings" },
 ];
 
-// Sample dashboard cards
 const cards = [
   {
     title: "Active Users",
