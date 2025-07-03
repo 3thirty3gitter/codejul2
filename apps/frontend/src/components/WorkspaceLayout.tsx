@@ -65,7 +65,6 @@ export default function WorkspaceLayout({ children }) {
               <img src="https://unpkg.com/lucide-static@latest/icons/folder-open.svg" className="w-5 h-5" alt="Files" />
               Files
             </h2>
-            {/* TODO: File list goes here */}
             <ul className="flex-1 space-y-2 text-sm text-gray-700">
               <li className="px-3 py-2 rounded-lg bg-blue-50 font-medium">src/App.tsx</li>
               <li className="px-3 py-2 rounded-lg hover:bg-blue-50">src/components/WorkspaceLayout.tsx</li>
@@ -79,7 +78,6 @@ export default function WorkspaceLayout({ children }) {
               <button className="px-3 py-1 rounded bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">Run</button>
             </div>
             <div className="flex-1 p-4">
-              {/* TODO: Code editor component goes here */}
               <div className="w-full h-64 bg-gray-800 rounded-lg flex items-center justify-center text-gray-400">
                 Your code editor here
               </div>
@@ -91,7 +89,6 @@ export default function WorkspaceLayout({ children }) {
               <img src="https://unpkg.com/lucide-static@latest/icons/monitor.svg" className="w-5 h-5" alt="Preview" />
               Live Preview
             </h2>
-            {/* TODO: Preview output goes here */}
             <div className="flex-1 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500">
               App preview here
             </div>
