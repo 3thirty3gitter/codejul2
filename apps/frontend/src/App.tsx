@@ -65,3 +65,5 @@ export default function App() {
     </div>
   );
 }
+import Dashboard from "@/components/Dashboard";
+// Add <Dashboard /> to your main render tree or route as appropriate
