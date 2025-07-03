@@ -56,15 +56,15 @@ export default function BeautifulFrontendUI() {
           {navItems.map(item => (
             <button
               key={item.label}
-              className={\`flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-medium group
-                \${selectedNav === item.label
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-medium group
+                ${selectedNav === item.label
                   ? "bg-blue-600 text-white shadow"
                   : "text-gray-700 hover:bg-blue-100 hover:text-blue-600"}
-              \`}
+              `}
               onClick={() => setSelectedNav(item.label)}
             >
               <img
-                src={\`https://unpkg.com/lucide-static@latest/icons/\${item.icon}.svg\`}
+                src={`https://unpkg.com/lucide-static@latest/icons/${item.icon}.svg`}
                 alt={item.label}
                 className="w-6 h-6"
               />
@@ -105,11 +105,11 @@ export default function BeautifulFrontendUI() {
           {cards.map(card => (
             <div
               key={card.title}
-              className={\`rounded-xl shadow-lg p-6 flex items-center gap-4 bg-white hover:scale-105 transition-transform duration-200 group\`}
+              className={`rounded-xl shadow-lg p-6 flex items-center gap-4 bg-white hover:scale-105 transition-transform duration-200 group`}
             >
-              <div className={\`rounded-full p-3 \${card.color} shadow\`}>
+              <div className={`rounded-full p-3 ${card.color} shadow`}>
                 <img
-                  src={\`https://unpkg.com/lucide-static@latest/icons/\${card.icon}.svg\`}
+                  src={`https://unpkg.com/lucide-static@latest/icons/${card.icon}.svg`}
                   alt={card.title}
                   className="w-7 h-7"
                 />
