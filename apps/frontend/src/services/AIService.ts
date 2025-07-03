@@ -1,10 +1,4 @@
-export interface Agent {
-  name: string;
-  specialization: string;
-  systemPrompt: string;
-  model: string;
-  temperature: number;
-}
+import axios from 'axios';
 
 export interface ChatMessage {
   id: string;
@@ -12,258 +6,211 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   agent?: string;
-  context?: {
-    files?: string[];
-    codeBlocks?: string[];
-    projects?: string[];
-  };
+  citations?: Citation[];
 }
 
-export interface ConversationMemory {
-  summary: string;
-  keyTopics: string[];
-  userPreferences: Record<string, any>;
-  codeContext: {
-    currentProject: string;
-    recentFiles: string[];
-    technologies: string[];
-  };
+export interface Citation {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+interface Agent {
+  name: string;
+  model: string;
+  systemPrompt: string;
+  searchEnabled: boolean;
 }
 
 export class AIService {
+  private messages: ChatMessage[] = [];
+  private apiKey: string;
   private agents: Map<string, Agent> = new Map();
-  private conversationHistory: ChatMessage[] = [];
-  private memory: ConversationMemory = {
-    summary: '',
-    keyTopics: [],
-    userPreferences: {},
-    codeContext: {
-      currentProject: '',
-      recentFiles: [],
-      technologies: []
-    }
-  };
 
   constructor() {
+    this.apiKey = import.meta.env.VITE_PERPLEXITY_API_KEY || '';
     this.initializeAgents();
   }
 
   private initializeAgents() {
-    // Code Specialist Agent (like Replit Agent)
+    // Updated with current valid Perplexity model names
     this.agents.set('coder', {
-      name: 'CodePilot Coder',
-      specialization: 'Full-stack development, debugging, code generation',
-      systemPrompt: `You are an expert full-stack developer. You can:
-- Generate complete applications from descriptions
-- Debug complex issues
-- Refactor and optimize code
-- Follow best practices and modern patterns
-- Work with any technology stack`,
-      model: 'gpt-4',
-      temperature: 0.1
+      name: 'Elite Coder',
+      model: 'sonar-pro', // Premium model for production code
+      systemPrompt: 'You are an expert full-stack developer. Generate production-ready code, debug issues, and provide best practices. Always include working examples.',
+      searchEnabled: true
     });
 
-    // Architecture Agent
     this.agents.set('architect', {
-      name: 'CodePilot Architect', 
-      specialization: 'System design, project planning, technology selection',
-      systemPrompt: `You are a senior software architect. You excel at:
-- Designing scalable system architectures
-- Selecting appropriate technologies
-- Breaking down complex projects into manageable tasks
-- Creating implementation roadmaps
-- Identifying potential issues early`,
-      model: 'gpt-4',
-      temperature: 0.2
+      name: 'System Architect', 
+      model: 'sonar-pro', // Premium model for comprehensive design
+      systemPrompt: 'You are a senior system architect. Design scalable architectures, recommend technology stacks, and create implementation roadmaps.',
+      searchEnabled: true
     });
 
-    // Code Reviewer Agent
-    this.agents.set('reviewer', {
-      name: 'CodePilot Reviewer',
-      specialization: 'Code review, security, performance optimization',
-      systemPrompt: `You are an expert code reviewer focused on:
-- Security vulnerabilities and best practices
-- Performance optimization opportunities
-- Code quality and maintainability
-- Testing strategies and coverage
-- Documentation completeness`,
-      model: 'gpt-4',
-      temperature: 0.1
+    this.agents.set('researcher', {
+      name: 'Tech Researcher',
+      model: 'sonar-pro', // Premium model with web search
+      systemPrompt: 'You are a technology research specialist. Find the latest documentation, compare solutions, and provide current best practices.',
+      searchEnabled: true
     });
 
-    // Learning Coordinator Agent
+    this.agents.set('accelerator', {
+      name: 'Speed Demon',
+      model: 'sonar', // Faster basic model for quick responses
+      systemPrompt: 'You are a rapid development specialist. Focus on creating quick prototypes and MVPs. Prioritize speed and functionality.',
+      searchEnabled: false
+    });
+
     this.agents.set('coordinator', {
-      name: 'CodePilot Coordinator',
-      specialization: 'Task routing, context management, learning',
-      systemPrompt: `You coordinate between specialists and manage context. You:
-- Route queries to the most appropriate agent
-- Maintain conversation context and memory
-- Learn from user interactions and preferences
-- Synthesize responses from multiple agents
-- Ensure consistency across the conversation`,
-      model: 'gpt-3.5-turbo',
-      temperature: 0.3
+      name: 'AI Coordinator',
+      model: 'sonar', // Basic model for general coordination
+      systemPrompt: 'You coordinate between specialists and provide general assistance. Route complex queries to appropriate agents.',
+      searchEnabled: false
     });
   }
 
-  async sendMessage(message: string, context?: any): Promise<ChatMessage> {
-    // 1. Add user message to history
+  private routeToAgent(message: string): string {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('code') || lowerMessage.includes('debug') || lowerMessage.includes('function') || lowerMessage.includes('component')) {
+      return 'coder';
+    }
+    
+    if (lowerMessage.includes('architecture') || lowerMessage.includes('design') || lowerMessage.includes('system') || lowerMessage.includes('scale')) {
+      return 'architect';
+    }
+    
+    if (lowerMessage.includes('research') || lowerMessage.includes('latest') || lowerMessage.includes('compare') || lowerMessage.includes('documentation')) {
+      return 'researcher';
+    }
+    
+    if (lowerMessage.includes('quick') || lowerMessage.includes('fast') || lowerMessage.includes('prototype')) {
+      return 'accelerator';
+    }
+    
+    return 'coordinator';
+  }
+
+  async sendMessage(message: string): Promise<ChatMessage> {
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content: message,
-      timestamp: new Date(),
-      context
+      timestamp: new Date()
     };
-    this.conversationHistory.push(userMessage);
+    this.messages.push(userMessage);
 
-    // 2. Determine which agent(s) should handle this
-    const targetAgent = await this.routeToAgent(message, context);
+    // Route to appropriate agent
+    const agentKey = this.routeToAgent(message);
+    const agent = this.agents.get(agentKey)!;
+
+    let response: ChatMessage;
+
+    if (this.apiKey) {
+      try {
+        const aiResponse = await this.callPerplexityAPI(message, agent);
+        response = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: aiResponse.content,
+          timestamp: new Date(),
+          agent: agentKey,
+          citations: aiResponse.citations
+        };
+      } catch (error) {
+        response = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `? Error connecting to Perplexity API: ${error.message}. Please check your API key configuration.`,
+          timestamp: new Date(),
+          agent: agentKey
+        };
+      }
+    } else {
+      response = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `?? **${agent.name} here!** I received your message: "${message}"\n\n?? **API Key Required**: To enable real AI responses with live web search, please:\n1. Get your Perplexity API key from [perplexity.ai](https://perplexity.ai)\n2. Add it to your \`.env.local\` file: \`VITE_PERPLEXITY_API_KEY=your_key_here\`\n3. Restart your dev server\n\nOnce configured, I'll provide intelligent responses with real-time web search and citations!`,
+        timestamp: new Date(),
+        agent: agentKey
+      };
+    }
     
-    // 3. Generate response with context
-    const response = await this.generateResponse(message, targetAgent, context);
-    
-    // 4. Update memory and learning
-    await this.updateMemory(userMessage, response);
-    
-    this.conversationHistory.push(response);
+    this.messages.push(response);
     return response;
   }
 
-  private async routeToAgent(message: string, context?: any): Promise<string> {
-    // Intelligent routing based on message content and context
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('debug') || lowerMessage.includes('error') || lowerMessage.includes('fix')) {
-      return 'coder';
-    }
-    
-    if (lowerMessage.includes('architecture') || lowerMessage.includes('design') || lowerMessage.includes('plan')) {
-      return 'architect';
-    }
-    
-    if (lowerMessage.includes('review') || lowerMessage.includes('security') || lowerMessage.includes('optimize')) {
-      return 'reviewer';
-    }
-    
-    // Default to coordinator for general queries
-    return 'coordinator';
-  }
+  private async callPerplexityAPI(message: string, agent: Agent): Promise<{content: string, citations: Citation[]}> {
+    const response = await axios.post(
+      'https://api.perplexity.ai/chat/completions',
+      {
+        model: agent.model,
+        messages: [
+          {
+            role: 'system',
+            content: agent.systemPrompt + '\n\nProject Context: CodePilot AI Development using React, TypeScript, and Tailwind CSS.'
+          },
+          {
+            role: 'user',
+            content: message
+          }
+        ],
+        temperature: 0.2,
+        max_tokens: 2048,
+        return_citations: agent.searchEnabled,
+        search_domain_filter: agent.searchEnabled ? ['github.com', 'stackoverflow.com', 'developer.mozilla.org'] : undefined
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
 
-  private async generateResponse(message: string, agentKey: string, context?: any): Promise<ChatMessage> {
-    const agent = this.agents.get(agentKey)!;
-    
-    // Build context-aware prompt
-    const contextualPrompt = this.buildContextualPrompt(message, agent, context);
-    
-    // Simulate AI API call (replace with actual API)
-    const aiResponse = await this.callAIAPI(contextualPrompt, agent);
-    
+    const content = response.data.choices[0].message.content;
+    const citations = response.data.citations || [];
+
     return {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: aiResponse,
-      timestamp: new Date(),
-      agent: agentKey,
-      context
+      content,
+      citations: citations.map((citation: any) => ({
+        title: citation.title || 'Source',
+        url: citation.url || '#',
+        snippet: citation.snippet || ''
+      }))
     };
   }
 
-  private buildContextualPrompt(message: string, agent: Agent, context?: any): string {
-    let prompt = agent.systemPrompt + '\n\n';
-    
-    // Add conversation context
-    if (this.conversationHistory.length > 0) {
-      prompt += 'Recent conversation:\n';
-      const recentMessages = this.conversationHistory.slice(-5);
-      recentMessages.forEach(msg => {
-        prompt += `${msg.role}: ${msg.content}\n`;
-      });
-      prompt += '\n';
-    }
-    
-    // Add memory context
-    if (this.memory.summary) {
-      prompt += `Conversation summary: ${this.memory.summary}\n`;
-    }
-    
-    if (this.memory.keyTopics.length > 0) {
-      prompt += `Key topics discussed: ${this.memory.keyTopics.join(', ')}\n`;
-    }
-    
-    // Add code context
-    if (context?.files?.length > 0) {
-      prompt += `Current files: ${context.files.join(', ')}\n`;
-    }
-    
-    if (this.memory.codeContext.technologies.length > 0) {
-      prompt += `Technologies in use: ${this.memory.codeContext.technologies.join(', ')}\n`;
-    }
-    
-    prompt += `\nUser query: ${message}\n\nResponse:`;
-    
-    return prompt;
-  }
-
-  private async callAIAPI(prompt: string, agent: Agent): Promise<string> {
-    // This would integrate with your preferred AI API (OpenAI, Anthropic, etc.)
-    // For now, return a placeholder that shows the agent working
-    return `[${agent.name}] I'm processing your request with my specialized knowledge in ${agent.specialization}. 
-
-Based on the context and my expertise, here's my response...
-
-(This will be replaced with actual AI API integration)`;
-  }
-
-  private async updateMemory(userMessage: ChatMessage, response: ChatMessage) {
-    // Extract key topics and update memory
-    const topics = this.extractTopics(userMessage.content + ' ' + response.content);
-    this.memory.keyTopics = [...new Set([...this.memory.keyTopics, ...topics])].slice(-10);
-    
-    // Update code context if relevant
-    if (userMessage.context?.files) {
-      this.memory.codeContext.recentFiles = [
-        ...new Set([...this.memory.codeContext.recentFiles, ...userMessage.context.files])
-      ].slice(-20);
-    }
-    
-    // Generate conversation summary periodically
-    if (this.conversationHistory.length % 10 === 0) {
-      this.memory.summary = await this.generateSummary();
-    }
-  }
-
-  private extractTopics(text: string): string[] {
-    // Simple topic extraction (could be enhanced with NLP)
-    const keywords = text.toLowerCase().match(/\b(react|typescript|node|python|api|database|frontend|backend|testing|deployment|security|performance)\b/g);
-    return keywords || [];
-  }
-
-  private async generateSummary(): Promise<string> {
-    // Generate a summary of the conversation for memory
-    const recentMessages = this.conversationHistory.slice(-20);
-    return `User is working on a project involving ${this.memory.codeContext.technologies.join(', ')}. Key topics discussed include ${this.memory.keyTopics.join(', ')}.`;
-  }
-
   getConversationHistory(): ChatMessage[] {
-    return this.conversationHistory;
-  }
-
-  getMemory(): ConversationMemory {
-    return this.memory;
+    return this.messages;
   }
 
   clearMemory() {
-    this.conversationHistory = [];
-    this.memory = {
-      summary: '',
-      keyTopics: [],
-      userPreferences: {},
-      codeContext: {
-        currentProject: '',
-        recentFiles: [],
-        technologies: []
-      }
+    this.messages = [];
+  }
+
+  async testConnection(): Promise<boolean> {
+    if (!this.apiKey) return false;
+    
+    try {
+      const agent = this.agents.get('coordinator')!;
+      const response = await this.callPerplexityAPI('Say "Hello from Perplexity!" to test the connection.', agent);
+      return response.content.toLowerCase().includes('hello');
+    } catch (error) {
+      console.error('Perplexity connection test failed:', error);
+      return false;
+    }
+  }
+
+  getMemory() {
+    return { 
+      keyTopics: ['AI', 'CodePilot', 'Development'], 
+      codeContext: { 
+        currentProject: 'CodePilot AI Workspace', 
+        technologies: ['React', 'TypeScript', 'Tailwind CSS', 'Perplexity API'] 
+      } 
     };
   }
 }

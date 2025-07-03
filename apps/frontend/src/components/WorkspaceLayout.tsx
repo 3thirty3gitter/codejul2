@@ -1,10 +1,13 @@
 import React, { useState } from "react";
 import AIChat from "./AIChat";
+import Settings from "./Settings";
+import CodeEditor from "./CodeEditor";
 
 export default function WorkspaceLayout({ children }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [codeEditorCollapsed, setCodeEditorCollapsed] = useState(true);
+  const [codeEditorCollapsed, setCodeEditorCollapsed] = useState(false); // Start expanded to showcase the editor
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [chatWidth, setChatWidth] = useState(66.67);
   const [isResizing, setIsResizing] = useState(false);
 
@@ -40,6 +43,22 @@ export default function WorkspaceLayout({ children }) {
       };
     }
   }, [isResizing]);
+
+  const openSettings = () => {
+    setShowSettings(true);
+    setShowUserDropdown(false);
+  };
+
+  const handleRunCode = (file) => {
+    // For now, just show a notification - we'll implement live preview next
+    const notification = document.createElement('div');
+    notification.textContent = `?? Running ${file.name}...`;
+    notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 3000);
+    
+    console.log('Running code:', file);
+  };
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 to-slate-200 font-inter flex flex-col">
@@ -134,6 +153,9 @@ export default function WorkspaceLayout({ children }) {
           <header className="flex items-center justify-between px-6 py-4 bg-white shadow-sm">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-slate-800">CodePilot AI Workspace</h1>
+              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                ?? Professional Editor Active
+              </span>
             </div>
             <div className="flex items-center gap-4">
               <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition-all">
@@ -151,10 +173,13 @@ export default function WorkspaceLayout({ children }) {
                 
                 {showUserDropdown && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                    <a href="#" className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
+                    <button 
+                      onClick={openSettings}
+                      className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition text-left"
+                    >
                       <img src="https://unpkg.com/lucide-static@latest/icons/settings.svg" className="w-4 h-4" alt="Settings" />
                       Settings
-                    </a>
+                    </button>
                     <a href="#" className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
                       <img src="https://unpkg.com/lucide-static@latest/icons/user-circle.svg" className="w-4 h-4" alt="Profile" />
                       Profile
@@ -174,7 +199,6 @@ export default function WorkspaceLayout({ children }) {
             className={`flex-1 flex gap-6 p-6 ${codeEditorCollapsed ? 'h-auto' : 'h-96'}`} 
             onMouseMove={handleMouseMove}
           >
-            {/* Enhanced AI Chat Interface */}
             <section 
               className={`bg-white rounded-2xl shadow flex flex-col ${codeEditorCollapsed ? 'min-h-[600px]' : 'h-full'}`}
               style={{ width: `${chatWidth}%` }}
@@ -182,7 +206,6 @@ export default function WorkspaceLayout({ children }) {
               <AIChat />
             </section>
 
-            {/* Resize Handle */}
             <div 
               className="w-2 cursor-col-resize bg-gray-300 hover:bg-blue-400 rounded-full transition-colors flex items-center justify-center"
               onMouseDown={handleMouseDown}
@@ -191,7 +214,6 @@ export default function WorkspaceLayout({ children }) {
               <div className="w-1 h-8 bg-white rounded-full opacity-50"></div>
             </div>
 
-            {/* Live Preview */}
             <section 
               className={`bg-white rounded-2xl shadow p-4 flex flex-col ${codeEditorCollapsed ? 'min-h-[600px]' : 'h-full'}`}
               style={{ width: `${100 - chatWidth - 1}%` }}
@@ -201,58 +223,28 @@ export default function WorkspaceLayout({ children }) {
                 Live Preview
               </h2>
               <div className="flex-1 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500">
-                App preview here
+                <div className="text-center">
+                  <div className="text-4xl mb-4">??</div>
+                  <div className="text-lg font-semibold mb-2">Live Preview Coming Next!</div>
+                  <div className="text-sm">Your code will render here in real-time</div>
+                </div>
               </div>
             </section>
           </div>
         </main>
       </div>
 
-      {/* Collapsible Code Editor */}
-      <div className={`bg-white border-t shadow-lg transition-all duration-300 ${codeEditorCollapsed ? 'h-12' : 'h-80'}`}>
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <img src="https://unpkg.com/lucide-static@latest/icons/code.svg" className="w-5 h-5 text-gray-600" alt="Code" />
-            <span className="font-semibold text-gray-800">Code Editor</span>
-            <span className="text-sm text-gray-500">- src/App.tsx</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-1 rounded bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
-              Run
-            </button>
-            <button 
-              onClick={() => setCodeEditorCollapsed(!codeEditorCollapsed)}
-              className="p-1 hover:bg-gray-200 rounded"
-              title={codeEditorCollapsed ? "Expand Editor" : "Collapse Editor"}
-            >
-              <img 
-                src={`https://unpkg.com/lucide-static@latest/icons/${codeEditorCollapsed ? 'chevron-up' : 'chevron-down'}.svg`} 
-                className="w-4 h-4 text-gray-600" 
-                alt="Toggle" 
-              />
-            </button>
-          </div>
-        </div>
-        
-        {!codeEditorCollapsed && (
-          <div className="flex-1 p-4 bg-gray-900 text-white font-mono text-sm overflow-auto">
-            <div className="text-gray-400">
-              {`// Your code editor here
-import React from "react";
+      {/* Professional Code Editor */}
+      <CodeEditor 
+        isCollapsed={codeEditorCollapsed}
+        onToggleCollapse={() => setCodeEditorCollapsed(!codeEditorCollapsed)}
+        onRunCode={handleRunCode}
+      />
 
-export default function App() {
-  return (
-    <div className="min-h-screen bg-blue-500 p-8">
-      <h1 className="text-white text-4xl font-bold">
-        Welcome to CodePilot AI!
-      </h1>
-    </div>
-  );
-}`}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Settings Modal */}
+      {showSettings && (
+        <Settings onClose={() => setShowSettings(false)} />
+      )}
 
       {showUserDropdown && (
         <div 
