@@ -65,3 +65,5 @@ export default function App() {
     </div>
   );
 }
+import BeautifulFrontendUI from "@/components/BeautifulFrontendUI";
+// Use <BeautifulFrontendUI /> in your render tree
