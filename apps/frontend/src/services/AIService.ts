@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+// Export all interfaces that need to be used by other modules
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -23,65 +24,64 @@ interface Agent {
 }
 
 export class AIService {
-  private messages: ChatMessage[] = [];
-  private apiKey: string;
-  private agents: Map<string, Agent> = new Map();
+  protected messages: ChatMessage[] = [];
+  protected apiKey: string;
+  protected agents: Map<string, Agent> = new Map();
 
   constructor() {
     this.apiKey = import.meta.env.VITE_PERPLEXITY_API_KEY || '';
     this.initializeAgents();
   }
 
-  private initializeAgents() {
-    // Updated with current valid Perplexity model names
+  protected initializeAgents() {
     this.agents.set('coder', {
       name: 'Elite Coder',
-      model: 'sonar-pro', // Premium model for production code
-      systemPrompt: 'You are an expert full-stack developer. Generate production-ready code, debug issues, and provide best practices. Always include working examples.',
+      model: 'sonar-pro',
+      systemPrompt: 'You are an expert full-stack developer. Generate production-ready code, debug issues, and provide best practices.',
       searchEnabled: true
     });
 
     this.agents.set('architect', {
       name: 'System Architect', 
-      model: 'sonar-pro', // Premium model for comprehensive design
-      systemPrompt: 'You are a senior system architect. Design scalable architectures, recommend technology stacks, and create implementation roadmaps.',
+      model: 'sonar-pro',
+      systemPrompt: 'You are a senior system architect. Design scalable architectures and create implementation roadmaps.',
       searchEnabled: true
     });
 
     this.agents.set('researcher', {
       name: 'Tech Researcher',
-      model: 'sonar-pro', // Premium model with web search
-      systemPrompt: 'You are a technology research specialist. Find the latest documentation, compare solutions, and provide current best practices.',
+      model: 'sonar-pro',
+      systemPrompt: 'You are a technology research specialist. Find the latest documentation and best practices.',
       searchEnabled: true
     });
 
     this.agents.set('accelerator', {
       name: 'Speed Demon',
-      model: 'sonar', // Faster basic model for quick responses
-      systemPrompt: 'You are a rapid development specialist. Focus on creating quick prototypes and MVPs. Prioritize speed and functionality.',
+      model: 'sonar',
+      systemPrompt: 'You are a rapid development specialist. Focus on creating quick prototypes and MVPs.',
       searchEnabled: false
     });
 
     this.agents.set('coordinator', {
       name: 'AI Coordinator',
-      model: 'sonar', // Basic model for general coordination
-      systemPrompt: 'You coordinate between specialists and provide general assistance. Route complex queries to appropriate agents.',
+      model: 'sonar',
+      systemPrompt: 'You coordinate between specialists and provide general assistance.',
       searchEnabled: false
     });
   }
 
-  private routeToAgent(message: string): string {
+  protected routeToAgent(message: string): string {
     const lowerMessage = message.toLowerCase();
     
-    if (lowerMessage.includes('code') || lowerMessage.includes('debug') || lowerMessage.includes('function') || lowerMessage.includes('component')) {
+    if (lowerMessage.includes('code') || lowerMessage.includes('debug') || lowerMessage.includes('function')) {
       return 'coder';
     }
     
-    if (lowerMessage.includes('architecture') || lowerMessage.includes('design') || lowerMessage.includes('system') || lowerMessage.includes('scale')) {
+    if (lowerMessage.includes('architecture') || lowerMessage.includes('design') || lowerMessage.includes('system')) {
       return 'architect';
     }
     
-    if (lowerMessage.includes('research') || lowerMessage.includes('latest') || lowerMessage.includes('compare') || lowerMessage.includes('documentation')) {
+    if (lowerMessage.includes('research') || lowerMessage.includes('latest') || lowerMessage.includes('documentation')) {
       return 'researcher';
     }
     
@@ -101,7 +101,6 @@ export class AIService {
     };
     this.messages.push(userMessage);
 
-    // Route to appropriate agent
     const agentKey = this.routeToAgent(message);
     const agent = this.agents.get(agentKey)!;
 
@@ -122,7 +121,7 @@ export class AIService {
         response = {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: `? Error connecting to Perplexity API: ${error.message}. Please check your API key configuration.`,
+          content: `? Error: ${error.message}`,
           timestamp: new Date(),
           agent: agentKey
         };
@@ -131,7 +130,7 @@ export class AIService {
       response = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `?? **${agent.name} here!** I received your message: "${message}"\n\n?? **API Key Required**: To enable real AI responses with live web search, please:\n1. Get your Perplexity API key from [perplexity.ai](https://perplexity.ai)\n2. Add it to your \`.env.local\` file: \`VITE_PERPLEXITY_API_KEY=your_key_here\`\n3. Restart your dev server\n\nOnce configured, I'll provide intelligent responses with real-time web search and citations!`,
+        content: `?? **${agent.name}** received: "${message}"\n\n?? **API Key Required** - Add your Perplexity API key to enable real AI responses!`,
         timestamp: new Date(),
         agent: agentKey
       };
@@ -141,7 +140,7 @@ export class AIService {
     return response;
   }
 
-  private async callPerplexityAPI(message: string, agent: Agent): Promise<{content: string, citations: Citation[]}> {
+  protected async callPerplexityAPI(message: string, agent: Agent): Promise<{content: string, citations: Citation[]}> {
     const response = await axios.post(
       'https://api.perplexity.ai/chat/completions',
       {
@@ -158,8 +157,7 @@ export class AIService {
         ],
         temperature: 0.2,
         max_tokens: 2048,
-        return_citations: agent.searchEnabled,
-        search_domain_filter: agent.searchEnabled ? ['github.com', 'stackoverflow.com', 'developer.mozilla.org'] : undefined
+        return_citations: agent.searchEnabled
       },
       {
         headers: {
@@ -196,10 +194,9 @@ export class AIService {
     
     try {
       const agent = this.agents.get('coordinator')!;
-      const response = await this.callPerplexityAPI('Say "Hello from Perplexity!" to test the connection.', agent);
-      return response.content.toLowerCase().includes('hello');
+      const response = await this.callPerplexityAPI('Test connection', agent);
+      return response.content.length > 0;
     } catch (error) {
-      console.error('Perplexity connection test failed:', error);
       return false;
     }
   }
