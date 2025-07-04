@@ -1,11 +1,11 @@
 import React, { useState, useRef } from "react";
-import AIChat from "./AIChat";
+import ApplicationBuilderChat from "./ApplicationBuilderChat";
 import Settings from "./Settings";
 import CodeEditor from "./CodeEditor";
 import FileExplorer from "./FileExplorer";
 import ProjectTemplates from "./ProjectTemplates";
 import LivePreview from "./LivePreview";
-import TeamChat from "./TeamChat";
+
 import { AITeam } from "../services/AITeam";
 
 export default function WorkspaceLayout({ children }) {
@@ -388,9 +388,9 @@ export default function WorkspaceLayout({ children }) {
                 style={{ width: `${chatWidth}%` }}
               >
                 {activeChat === 'individual' ? (
-                  <AIChat />
+                  <ApplicationBuilderChat />
                 ) : (
-                  <TeamChat 
+                  <ApplicationBuilderChat 
                     aiTeam={aiTeam.current}
                     onMessageSend={handleTeamMessage}
                   />
@@ -462,3 +462,4 @@ export default function WorkspaceLayout({ children }) {
     </div>
   );
 }
+

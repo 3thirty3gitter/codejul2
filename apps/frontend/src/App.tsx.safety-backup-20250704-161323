@@ -1,0 +1,37 @@
+import React from "react";
+import ApplicationBuilderChat from "./components/ApplicationBuilderChat";
+import "./App.css";
+
+export default function App() {
+  return (
+    <div className="App">
+      <div style={{ 
+        height: '100vh', 
+        display: 'flex', 
+        flexDirection: 'column',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
+      }}>
+        {/* Header */}
+        <header style={{ 
+          padding: '1rem', 
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+          color: 'white',
+          borderBottom: '1px solid #ddd',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}>
+          <h1 style={{ margin: 0, fontSize: '1.5rem' }}>
+            ?? CodePilot - AI Application Builder
+          </h1>
+          <p style={{ margin: '0.5rem 0 0 0', opacity: 0.9 }}>
+            Your AI that actually builds complete applications with real code!
+          </p>
+        </header>
+        
+        {/* Main Content - Your Working Application Builder */}
+        <main style={{ flex: 1, overflow: 'hidden' }}>
+          <ApplicationBuilderChat />
+        </main>
+      </div>
+    </div>
+  );
+}

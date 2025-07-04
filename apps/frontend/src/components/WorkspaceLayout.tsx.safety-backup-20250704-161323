@@ -1,0 +1,353 @@
+import React, { useState, useRef, useEffect } from "react";
+import ApplicationBuilderChat from "./ApplicationBuilderChat";
+import FileExplorer from "./FileExplorer";
+import LivePreview from "./LivePreview";
+import CodeEditor from "./CodeEditor";
+import { 
+  FileText, 
+  FolderOpen, 
+  MessageSquare, 
+  Users, 
+  Play, 
+  Eye,
+  Code,
+  Terminal,
+  Settings,
+  User,
+  Search
+} from "lucide-react";
+
+export default function WorkspaceLayout() {
+  const [leftPanelWidth, setLeftPanelWidth] = useState(250);
+  const [rightPanelWidth, setRightPanelWidth] = useState(400);
+  const [activeLeftTab, setActiveLeftTab] = useState('files');
+  const [selectedFileId, setSelectedFileId] = useState(null);
+  const [currentFiles, setCurrentFiles] = useState([
+    { id: '1', name: 'App.tsx', type: 'file', size: '2.3 KB' },
+    { id: '2', name: 'components', type: 'folder', children: [
+      { id: '3', name: 'Header.tsx', type: 'file', size: '1.2 KB' },
+      { id: '4', name: 'ApplicationBuilderChat.tsx', type: 'file', size: '5.8 KB' },
+      { id: '5', name: 'WorkspaceLayout.tsx', type: 'file', size: '4.1 KB' }
+    ]},
+    { id: '6', name: 'package.json', type: 'file', size: '1.1 KB' },
+    { id: '7', name: 'src', type: 'folder', children: [
+      { id: '8', name: 'services', type: 'folder', children: [
+        { id: '9', name: 'applicationBuilderAPI.ts', type: 'file', size: '3.2 KB' }
+      ]}
+    ]}
+  ]);
+
+  const leftTabs = [
+    { id: 'files', icon: FolderOpen, label: 'Files' },
+    { id: 'search', icon: Search, label: 'Search' },
+    { id: 'git', icon: Code, label: 'Version Control' },
+    { id: 'chat', icon: MessageSquare, label: 'AI Chat' },
+    { id: 'team', icon: Users, label: 'AI Team' }
+  ];
+
+  const handleFileSelect = (file) => {
+    setSelectedFileId(file.id);
+  };
+
+  const renderFileTree = (files, level = 0) => {
+    return files.map(file => (
+      <div key={file.id} style={{ marginLeft: `${level * 20}px` }}>
+        <div
+          onClick={() => handleFileSelect(file)}
+          style={{
+            padding: '4px 8px',
+            cursor: 'pointer',
+            background: selectedFileId === file.id ? '#007acc20' : 'transparent',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '13px',
+            color: '#cccccc'
+          }}
+        >
+          {file.type === 'folder' ? (
+            <FolderOpen size={16} color="#dcb67a" />
+          ) : (
+            <FileText size={16} color="#519aba" />
+          )}
+          <span>{file.name}</span>
+          {file.size && (
+            <span style={{ marginLeft: 'auto', fontSize: '11px', opacity: 0.7 }}>
+              {file.size}
+            </span>
+          )}
+        </div>
+        {file.children && renderFileTree(file.children, level + 1)}
+      </div>
+    ));
+  };
+
+  const renderLeftPanel = () => {
+    switch (activeLeftTab) {
+      case 'files':
+        return (
+          <div style={{ padding: '1rem', color: '#cccccc' }}>
+            <div style={{ fontSize: '11px', fontWeight: '500', marginBottom: '1rem', textTransform: 'uppercase', opacity: 0.7 }}>
+              ?? File Management Active
+            </div>
+            {renderFileTree(currentFiles)}
+          </div>
+        );
+      
+      case 'search':
+        return (
+          <div style={{ padding: '1rem', color: '#cccccc' }}>
+            <div style={{ fontSize: '11px', fontWeight: '500', marginBottom: '1rem', textTransform: 'uppercase', opacity: 0.7 }}>
+              Search
+            </div>
+            <input
+              type="text"
+              placeholder="Search files..."
+              style={{
+                width: '100%',
+                background: '#3c3c3c',
+                border: '1px solid #4c4c4c',
+                borderRadius: '4px',
+                padding: '8px',
+                color: '#cccccc',
+                fontSize: '13px'
+              }}
+            />
+          </div>
+        );
+      
+      case 'git':
+        return (
+          <div style={{ padding: '1rem', color: '#cccccc' }}>
+            <div style={{ fontSize: '11px', fontWeight: '500', marginBottom: '1rem', textTransform: 'uppercase', opacity: 0.7 }}>
+              ?? Version Control
+            </div>
+            <div style={{ fontSize: '13px', opacity: 0.8 }}>
+              <div style={{ marginBottom: '8px' }}>No changes detected</div>
+              <div style={{ fontSize: '11px', opacity: 0.6 }}>Working tree clean</div>
+            </div>
+          </div>
+        );
+      
+      case 'chat':
+        return (
+          <div style={{ padding: '1rem', color: '#cccccc' }}>
+            <div style={{ fontSize: '11px', fontWeight: '500', marginBottom: '1rem', textTransform: 'uppercase', opacity: 0.7 }}>
+              ?? AI Chat
+            </div>
+            <div style={{ fontSize: '13px', opacity: 0.8 }}>
+              AI Chat is active in the center panel
+            </div>
+          </div>
+        );
+      
+      case 'team':
+        return (
+          <div style={{ padding: '1rem', color: '#cccccc' }}>
+            <div style={{ fontSize: '11px', fontWeight: '500', marginBottom: '1rem', textTransform: 'uppercase', opacity: 0.7 }}>
+              ?? AI Team
+            </div>
+            <div style={{ fontSize: '13px', opacity: 0.8 }}>
+              Individual AI: ?? Active
+            </div>
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div style={{ height: '100vh', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif', background: '#1e1e1e' }}>
+      
+      {/* Header */}
+      <div style={{ 
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '35px',
+        background: '#2d2d30',
+        borderBottom: '1px solid #454545',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 1rem',
+        color: '#cccccc',
+        zIndex: 1000,
+        fontSize: '13px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ fontWeight: '500' }}>?? CodePilot AI Workspace</span>
+          <div style={{ display: 'flex', gap: '8px', fontSize: '11px' }}>
+            <span style={{ background: '#16a34a', color: 'white', padding: '2px 6px', borderRadius: '3px' }}>
+              ?? File Management Active
+            </span>
+            <span style={{ background: '#dc2626', color: 'white', padding: '2px 6px', borderRadius: '3px' }}>
+              ?? Individual AI
+            </span>
+            <span style={{ background: '#2563eb', color: 'white', padding: '2px 6px', borderRadius: '3px' }}>
+              ?? Live Preview Active
+            </span>
+          </div>
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button style={{ background: 'transparent', border: 'none', color: '#cccccc', cursor: 'pointer' }}>
+            <Eye size={14} />
+          </button>
+          <button style={{ background: 'transparent', border: 'none', color: '#cccccc', cursor: 'pointer' }}>
+            <Settings size={14} />
+          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button style={{ background: '#8B4513', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>
+              ?? Templates
+            </button>
+            <button style={{ background: '#007acc', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>
+              + New Project
+            </button>
+          </div>
+          <button style={{ background: 'transparent', border: 'none', color: '#cccccc', cursor: 'pointer' }}>
+            <User size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Left Activity Bar */}
+      <div style={{ 
+        width: '50px', 
+        background: '#333333', 
+        color: 'white',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '45px 0 1rem 0',
+        gap: '8px',
+        borderRight: '1px solid #454545'
+      }}>
+        {leftTabs.map(({ id, icon: Icon, label }) => (
+          <button
+            key={id}
+            onClick={() => setActiveLeftTab(id)}
+            style={{
+              background: activeLeftTab === id ? '#007acc' : 'transparent',
+              border: 'none',
+              color: 'white',
+              padding: '12px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title={label}
+          >
+            <Icon size={20} />
+          </button>
+        ))}
+      </div>
+
+      {/* Left Panel */}
+      <div style={{ 
+        width: `${leftPanelWidth}px`,
+        background: '#252526',
+        color: 'white',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRight: '1px solid #454545',
+        marginTop: '35px'
+      }}>
+        <div style={{ 
+          padding: '8px 16px',
+          borderBottom: '1px solid #454545',
+          fontSize: '11px',
+          fontWeight: '500',
+          color: '#cccccc',
+          textTransform: 'uppercase'
+        }}>
+          {leftTabs.find(tab => tab.id === activeLeftTab)?.label}
+        </div>
+        
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {renderLeftPanel()}
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div style={{ 
+        flex: 1, 
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#1e1e1e',
+        marginTop: '35px'
+      }}>
+        
+        {/* Center Panel - Your Working AI Chat */}
+        <div style={{ 
+          flex: 1,
+          background: 'white',
+          borderRight: '1px solid #e0e0e0'
+        }}>
+          <ApplicationBuilderChat />
+        </div>
+      </div>
+
+      {/* Right Panel - Live Preview */}
+      <div style={{ 
+        width: `${rightPanelWidth}px`,
+        background: '#f5f5f5',
+        display: 'flex',
+        flexDirection: 'column',
+        borderLeft: '1px solid #e0e0e0',
+        marginTop: '35px'
+      }}>
+        <div style={{ 
+          padding: '12px 16px',
+          borderBottom: '1px solid #e0e0e0',
+          fontSize: '13px',
+          fontWeight: '500',
+          color: '#333',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'white'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Eye size={16} />
+            <span>Live Preview</span>
+          </div>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button style={{ background: '#f0f0f0', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>Auto</button>
+            <button style={{ background: '#007acc', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>? Refresh</button>
+            <button style={{ background: '#f0f0f0', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>?? Hide</button>
+            <button style={{ background: '#8B4513', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>?? Open</button>
+          </div>
+        </div>
+        
+        <div style={{ 
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          color: '#666',
+          background: 'white'
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.3 }}>?</div>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', color: '#333' }}>No Preview Available</h3>
+            <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4' }}>
+              Create an HTML, JSX, or TSX file to see live preview.<br/>
+              <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+                Supported: index.html, App.tsx, App.jsx, main.html
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import aiRoutes from "./routes/ai";
+import applicationBuilderRoutes from "./routes/applicationBuilder";
 import filesRoutes from "./routes/files";
 import projectsRoutes from "./routes/projects";
 import { connectDatabases } from "./db/connection";
@@ -25,6 +26,7 @@ app.get("/api/health", (req, res) => {
 
 // API Routes
 app.use("/api/ai", aiRoutes);
+app.use("/api/builder", applicationBuilderRoutes);
 app.use("/api/files", filesRoutes);
 app.use("/api/projects", projectsRoutes);
 
@@ -50,3 +52,4 @@ async function startServer() {
 }
 
 startServer();
+
