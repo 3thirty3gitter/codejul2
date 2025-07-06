@@ -1,0 +1,30 @@
+import React from "react";
+
+const dummyMessages = [
+  { id: "msg-1", text: "Hello!", isUser: true },
+  { id: "msg-2", text: "Hi there!", isUser: false }
+];
+
+export default function ApplicationBuilderChat() {
+  return (
+    <div className="flex flex-col h-full max-h-full chat-container">
+      <div className="flex-1 overflow-y-auto p-4" style={{ maxHeight: "100%", minHeight: 0, overflowY: "auto" }}>
+        {dummyMessages.map((message, index) => (
+          <div
+            key={message.id + '-' + index}
+            className={`max-w-[80%] rounded-lg px-4 py-3 ${
+              message.isUser
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100"
+            } mb-2`}
+          >
+            {message.text}
+          </div>
+        ))}
+      </div>
+      <div className="border-t p-4">
+        <input className="w-full border rounded px-2 py-1" placeholder="Type a message..." />
+      </div>
+    </div>
+  );
+}

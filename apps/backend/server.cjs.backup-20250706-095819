@@ -1,0 +1,56 @@
+const express = require("express");
+const cors = require("cors");
+require("dotenv").config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+
+app.post("/api/chat", async (req, res) => {
+  const { messages } = req.body;
+
+  if (!messages) {
+    return res.status(400).json({ error: "Messages are required" });
+  }
+
+  try {
+    const aiResponse = await fetch(PERPLEXITY_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3-sonar-large-32k-online",
+        messages: messages,
+      }),
+    });
+
+    const data = await aiResponse.json();
+    
+    // Log the full response from the AI for debugging
+    console.log("Full response from Perplexity AI:", JSON.stringify(data, null, 2));
+
+    // Check for errors from the Perplexity API
+    if (!aiResponse.ok || data.error) {
+        // Forward the specific error from the AI service
+        const errorMessage = data.error?.message || `API request failed with status ${aiResponse.status}`;
+        console.error("AI Service Error:", errorMessage);
+        return res.status(aiResponse.status).json({ error: `AI service error: ${errorMessage}` });
+    }
+
+    // If successful, send the data to the frontend
+    res.json(data);
+
+  } catch (error) {
+    console.error("Server-side error:", error);
+    res.status(500).json({ error: "Failed to communicate with the AI service." });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Backend server is running on http://localhost:${PORT}`);
+});
