@@ -1,97 +1,51 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { ChatMessage } from '../services/AIService';
-import { AIService } from '../services/AIService';
+import { useState } from "react";
 
-export interface UseAIChatReturn {
-  messages: ChatMessage[];
-  isLoading: boolean;
-  isConnected: boolean;
-  sendMessage: (msg: string) => Promise<void>;
-  clearChat: () => void;
-  retryLastMessage: () => Promise<void>;
-  testConnection: () => Promise<boolean>;
-  memory: ReturnType<AIService['getMemory']>;
+interface DisplayMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
-export function useAIChat(): UseAIChatReturn {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export function useAIChat() {
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const aiService = useRef(new AIService());
-  const lastUserMessage = useRef<string>('');
+  const [error, setError] = useState<string | null>(null);
 
-  // On mount: test connection & send a welcome
-  useEffect(() => {
-    (async () => {
-      const ok = await aiService.current.testConnection();
-      setIsConnected(ok);
+  const sendMessage = async (userMessageContent: string) => {
+    if (userMessageContent.trim() === "" || isLoading) return;
 
-      const welcome: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: ok
-          ? '? Connected! Ready for real AI responses.'
-          : '?? Not connected. Please add your API key.',
-        timestamp: new Date(),
-        agent: 'coordinator',
-      };
-      setMessages([welcome]);
-    })();
-  }, []);
+    const newUserMessage: DisplayMessage = { role: "user", content: userMessageContent };
+    const history = [...messages, newUserMessage];
+    setMessages(history);
+    setIsLoading(true);
+    setError(null);
 
-  const sendMessage = useCallback(
-    async (msg: string) => {
-      if (!msg.trim() || isLoading) return;
-      setIsLoading(true);
-      lastUserMessage.current = msg;
+    try {
+      const response = await fetch("http://localhost:3001/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+      });
 
-      try {
-        await aiService.current.sendMessage(msg);
-        setMessages(aiService.current.getConversationHistory());
-      } catch (e: any) {
-        console.error(e);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: `? Error: ${e?.message || 'Unknown'}`,
-            timestamp: new Date(),
-            agent: 'coordinator',
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "An unknown server error occurred.");
+
+      // The backend now sends a final, clean message object.
+      if (data && data.content) {
+        const aiMessage: DisplayMessage = {
+          role: "assistant",
+          content: data.content,
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        throw new Error("Received an invalid response from the AI service.");
       }
-    },
-    [isLoading]
-  );
-
-  const retryLastMessage = useCallback(async () => {
-    if (lastUserMessage.current) {
-      await sendMessage(lastUserMessage.current);
+    } catch (e: any) {
+      console.error("Frontend Chat Error:", e);
+      setError(e.message || "An unknown error occurred.");
+    } finally {
+      setIsLoading(false);
     }
-  }, [sendMessage]);
-
-  const testConnection = useCallback(async () => {
-    const ok = await aiService.current.testConnection();
-    setIsConnected(ok);
-    return ok;
-  }, []);
-
-  const clearChat = useCallback(() => {
-    aiService.current.clearMemory();
-    setMessages([]);
-  }, []);
-
-  return {
-    messages,
-    isLoading,
-    isConnected,
-    sendMessage,
-    clearChat,
-    retryLastMessage,
-    testConnection,
-    memory: aiService.current.getMemory(),
   };
+
+  return { messages, isLoading, error, sendMessage };
 }
