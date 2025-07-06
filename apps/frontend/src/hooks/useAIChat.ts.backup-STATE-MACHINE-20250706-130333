@@ -5,6 +5,7 @@ interface DisplayMessage {
   content: string;
 }
 
+// This hook will now manage the entire conversation, including the tool-use loop.
 export function useAIChat() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,16 +32,16 @@ export function useAIChat() {
       if (!response.ok) {
         throw new Error(data.error || "An unknown server error occurred.");
       }
-      
-      // The backend now sends the final response message after its internal loop.
+
       if (data && data.choices && data.choices[0] && data.choices[0].message) {
         const aiMessage: DisplayMessage = {
           role: "assistant",
           content: data.choices[0].message.content,
         };
+        // The backend now sends the final response after the tool loop, so we just display it.
         setMessages(prev => [...prev, aiMessage]);
       } else {
-        throw new Error("Received an invalid or unexpected response from the AI service.");
+        throw new Error("Received an invalid response from the AI service.");
       }
 
     } catch (e: any) {

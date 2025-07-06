@@ -1,0 +1,103 @@
+const express = require("express");
+const cors = require("cors");
+const fs = require("fs").promises;
+const path = require("path");
+require("dotenv").config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// --- CONFIGURATION ---
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+const WORKSPACE_DIR = path.resolve(__dirname, '..', '..', 'generated-projects');
+const API_TIMEOUT = 90000; // 90-second timeout for complex planning
+
+fs.mkdir(WORKSPACE_DIR, { recursive: true });
+
+// --- AGENT TOOLS AND HANDLERS (UNCHANGED) ---
+const getSafePath = (filePath) => {
+  if (!filePath || typeof filePath !== 'string') throw new Error("Invalid path provided.");
+  const resolvedPath = path.resolve(WORKSPACE_DIR, filePath);
+  if (!resolvedPath.startsWith(WORKSPACE_DIR)) throw new Error("Access denied.");
+  return resolvedPath;
+};
+const tools = [
+  { type: "function", function: { name: "listFiles", description: "List all files in the workspace.", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "readFile", description: "Read a file's content.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } } },
+  { type: "function", function: { name: "writeFile", description: "Write content to a file.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } } }
+];
+const toolHandlers = {
+  listFiles: async () => (await fs.readdir(WORKSPACE_DIR, { withFileTypes: true, recursive: true })).map(file => path.join(file.path.replace(WORKSPACE_DIR, ''), file.name)).join('\n') || 'Workspace is empty.',
+  readFile: async ({ path: filePath }) => fs.readFile(getSafePath(filePath), "utf-8"),
+  writeFile: async ({ path: filePath, content }) => {
+    const safePath = getSafePath(filePath);
+    await fs.mkdir(path.dirname(safePath), { recursive: true });
+    await fs.writeFile(safePath, content, "utf-8");
+    return `Successfully wrote to ${filePath}`;
+  },
+};
+
+// --- DEFINITIVE MASTER SYSTEM PROMPT (DevOpsAgent) ---
+const systemPrompt = `You are DevOpsAgent, an autonomous full-stack engineer. You exist entirely within a sandboxed file system. Your only purpose is to build and modify software for the user by following a strict, unchangeable, multi-phase process. You are forbidden from searching the web.
+
+**Your MANDATORY Operational Workflow:**
+
+**Phase 1: Interpret & Summarize**
+Your first response to any new user request MUST begin with a summary of the user's goals, constraints, and deliverables, formatted as 2-3 bullet points.
+
+**Phase 2: Plan**
+Immediately following the summary, you MUST present a high-level development plan broken into clear phases (e.g., Architecture, UI Mock-up, Implementation, Testing). This MUST be a numbered list. Your response for this phase MUST end with the exact question: "Does this plan look good? Would you like a visual example (wireframe, Mermaid chart, or HTML mock-up) before we start coding?" You will then STOP and await user approval.
+
+**Phase 3: Visual Example (Conditional)**
+If, and only if, the user asks for a visual example, your next action is to generate one. Use your 'writeFile' tool to create an HTML or Mermaid file. After creating the visual, report success and await final approval on the plan.
+
+**Phase 4: Implementation**
+Once the plan is approved, you will begin executing it step-by-step. For each step, you will first state the action you are taking (e.g., "Now implementing the main React component...") and then call the appropriate tool ('listFiles', 'readFile', or 'writeFile') to perform the action.
+
+**Non-Negotiable Rule:** After every 'writeFile' operation, your immediate next action MUST be to call 'readFile' on the exact same file to verify that the content was written correctly.
+
+You will report the outcome of each step and await user confirmation ("continue", "proceed", etc.) before proceeding to the next phase of the approved plan.`;
+
+// --- MAIN CHAT ENDPOINT WITH ROBUST ERROR HANDLING ---
+app.post("/api/chat", async (req, res) => {
+  const history = req.body.messages || [];
+  if (history.length === 0) return res.status(400).json({ error: "Messages are required" });
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+    const response = await fetch(PERPLEXITY_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3-sonar-large-32k-chat", // Using a powerful offline model capable of complex instruction following
+        system: systemPrompt,
+        messages: history,
+        tools: tools,
+      }),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Perplexity API Error:", errorText);
+        throw new Error(`AI service responded with status ${response.status}. Check backend logs.`);
+    }
+
+    const data = await response.json();
+    res.json(data); // Send the raw response to the frontend to handle
+
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: "The request to the AI service timed out. Please try a simpler request." });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`DevOpsAgent is online on http://localhost:${PORT}`));

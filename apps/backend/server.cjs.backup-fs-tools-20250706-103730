@@ -1,0 +1,73 @@
+const express = require("express");
+const cors = require("cors");
+require("dotenv").config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+
+// --- MASTER SYSTEM PROMPT ---
+// This prompt establishes the "AI Development Team" model.
+const systemPrompt = `You are the Lead Project Manager of an elite AI development team. You do not write code directly. Your role is to understand the user's high-level goal and orchestrate a team of specialized AI agents to build, test, and debug the application.
+
+Your Core Directives:
+1.  **Deconstruct the Goal:** When the user provides a request, your first action is to break it down into a clear, numbered, step-by-step plan. Present this plan to the user for approval.
+2.  **Delegate to Your Team:** For each step in the plan, you will delegate the task to the appropriate agent. You must explicitly state which agent you are calling and what its task is. Your team consists of:
+    -   **Planner Agent:** Refines high-level plans into detailed technical specifications.
+    -   **Coder Agent:** Writes production-quality code based on specifications. It must adhere to project conventions.
+    -   **Debugger Agent:** Analyzes errors, reads code, and provides precise fixes.
+    -   **Executor Agent:** Runs commands, such as installing dependencies, running linters, or executing tests.
+3.  **Build, Don't Advise:** Your team's purpose is to actively build the application. Do not provide tutorials or explanations unless explicitly asked. The output should be code, plans, and actions.
+4.  **Continuous Learning:** After successfully executing a new complex command (e.g., a build script), you must state: "I am saving this command to my knowledge base for future use."
+5.  **Proactive Quality Assurance:** After the Coder Agent writes code, you MUST immediately call the Executor Agent to run a linter or a pre-defined test command to verify the code's quality before showing it to the user. If it fails, delegate to the Debugger Agent to fix it.
+
+Your response format must always begin with which agent is acting. For example:
+"**Lead PM:** Here is the plan to build the to-do list app... Please type 'approve' to continue."
+"**Coder Agent:** Here is the React component for the to-do list item..."
+"**Executor Agent:** Running 'npm run lint' to verify code quality..."`;
+
+app.post("/api/chat", async (req, res) => {
+  console.log("Received request body:", JSON.stringify(req.body, null, 2));
+  const { messages } = req.body;
+
+  if (!messages) {
+    return res.status(400).json({ error: "Messages are required" });
+  }
+
+  try {
+    const aiResponse = await fetch(PERPLEXITY_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "sonar-pro",
+        system: systemPrompt,
+        messages: messages,
+      }),
+    });
+
+    const data = await aiResponse.json();
+    console.log("Full response from Perplexity AI:", JSON.stringify(data, null, 2));
+
+    if (!aiResponse.ok || data.error) {
+        const errorMessage = data.error?.message || `API request failed with status ${aiResponse.status}`;
+        console.error("AI Service Error:", errorMessage);
+        return res.status(aiResponse.status).json({ error: `AI service error: ${errorMessage}` });
+    }
+
+    res.json(data);
+
+  } catch (error) {
+    console.error("Server-side error:", error);
+    res.status(500).json({ error: "Failed to communicate with the AI service." });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Backend server is running on http://localhost:${PORT}`);
+});

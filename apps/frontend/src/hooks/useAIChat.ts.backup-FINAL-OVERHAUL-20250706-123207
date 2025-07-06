@@ -1,21 +1,22 @@
 import { useState } from "react";
 
-interface DisplayMessage {
-  role: "user" | "assistant";
+interface Message {
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
+  isUser?: boolean;
 }
 
 export function useAIChat() {
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sendMessage = async (userMessageContent: string) => {
     if (userMessageContent.trim() === "" || isLoading) return;
 
-    const newUserMessage: DisplayMessage = { role: "user", content: userMessageContent };
-    const history = [...messages, newUserMessage];
-    setMessages(history);
+    const userMessage: Message = { role: "user", content: userMessageContent, isUser: true };
+    const currentMessages = [...messages, userMessage];
+    setMessages(currentMessages);
     setIsLoading(true);
     setError(null);
 
@@ -23,28 +24,30 @@ export function useAIChat() {
       const response = await fetch("http://localhost:3001/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: currentMessages.map(({ role, content }) => ({ role, content })) }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "An unknown server error occurred.");
+        throw new Error(data.error || "An unknown error occurred.");
       }
-      
-      // The backend now sends the final response message after its internal loop.
-      if (data && data.choices && data.choices[0] && data.choices[0].message) {
-        const aiMessage: DisplayMessage = {
+
+      // **RESILIENT CHECK**
+      if (data.choices && data.choices[0] && data.choices[0].message) {
+        const aiMessage: Message = {
           role: "assistant",
           content: data.choices[0].message.content,
+          isUser: false,
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
-        throw new Error("Received an invalid or unexpected response from the AI service.");
+        // Handle cases where the response is OK but not in the expected format
+        throw new Error("Received an invalid response from the server.");
       }
 
     } catch (e: any) {
-      console.error("Frontend Chat Error:", e);
+      console.error("Chat Error:", e);
       setError(e.message || "An unknown error occurred.");
     } finally {
       setIsLoading(false);

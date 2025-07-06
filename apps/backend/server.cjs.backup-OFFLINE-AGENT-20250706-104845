@@ -1,0 +1,108 @@
+const express = require("express");
+const cors = require("cors");
+const fs = require("fs").promises;
+const path = require("path");
+require("dotenv").config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// --- CONFIGURATION ---
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+const WORKSPACE_DIR = path.resolve(__dirname, '..', '..', 'generated-projects');
+
+fs.mkdir(WORKSPACE_DIR, { recursive: true });
+
+// Helper to create a secure file path
+const getSafePath = (filePath) => {
+  if (!filePath || typeof filePath !== 'string') throw new Error("Invalid path provided.");
+  const resolvedPath = path.resolve(WORKSPACE_DIR, filePath);
+  if (!resolvedPath.startsWith(WORKSPACE_DIR)) throw new Error("Access denied.");
+  return resolvedPath;
+};
+
+// --- AGENT TOOLS ---
+// This is the ONLY set of tools the agent will be aware of.
+const tools = [
+  { type: "function", function: { name: "listFiles", description: "List all files and directories recursively in the project workspace.", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "readFile", description: "Read the contents of a specific file.", parameters: { type: "object", properties: { path: { type: "string", description: "The relative path to the file." } }, required: ["path"] } } },
+  { type: "function", function: { name: "writeFile", description: "Write content to a file, creating it if necessary.", parameters: { type: "object", properties: { path: { type: "string", description: "The relative path to the file." }, content: { type: "string", description: "The content to write." } }, required: ["path", "content"] } } }
+];
+
+const toolHandlers = {
+  listFiles: async () => (await fs.readdir(WORKSPACE_DIR, { withFileTypes: true, recursive: true })).map(file => path.join(file.path.replace(WORKSPACE_DIR, ''), file.name)).join('\n'),
+  readFile: async ({ path: filePath }) => fs.readFile(getSafePath(filePath), "utf-8"),
+  writeFile: async ({ path: filePath, content }) => {
+    const safePath = getSafePath(filePath);
+    await fs.mkdir(path.dirname(safePath), { recursive: true });
+    await fs.writeFile(safePath, content, "utf-8");
+    return `Successfully wrote ${content.length} bytes to ${filePath}`;
+  },
+};
+
+// --- ISOLATED BUILDER AGENT - SYSTEM PROMPT ---
+const systemPrompt = `You are an autonomous AI software engineer. Your sole purpose is to build and modify applications by using the file system tools you have been provided.
+
+**CRITICAL DIRECTIVE: You are FORBIDDEN from searching the web or providing information, explanations, or tutorials. Your ONLY function is to use the 'listFiles', 'readFile', and 'writeFile' tools to complete the user's request.**
+
+Your operational loop is as follows:
+1.  **Analyze Request:** Understand the user's goal in the context of the current file system state.
+2.  **Formulate a Plan:** Decide which file system operation is the necessary next step.
+3.  **Execute Tool:** Call the appropriate tool (`listFiles`, `readFile`, or `writeFile`).
+4.  **Verify Action:** If you write a file, immediately call `readFile` on that same file to confirm the content was written correctly. This is mandatory.
+5.  **Report Result:** Inform the user of the outcome of your tool use and await the next instruction.
+Do not ask for approval for plans; execute the first logical step immediately.`;
+
+// --- MAIN CHAT ENDPOINT WITH TOOL-USE LOOP ---
+app.post("/api/chat", async (req, res) => {
+  const history = req.body.messages || [];
+  if (history.length === 0) return res.status(400).json({ error: "Messages are required" });
+
+  try {
+    let continueConversation = true;
+    while (continueConversation) {
+      const aiResponse = await fetch(PERPLEXITY_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+        body: JSON.stringify({
+          model: "sonar-pro",
+          system: systemPrompt,
+          messages: history,
+          tools: tools, // <-- We explicitly provide ONLY our building tools
+        }),
+      });
+
+      const data = await aiResponse.json();
+      const choice = data.choices && data.choices[0];
+      if (!choice) throw new Error("Invalid response from AI service");
+
+      const { message } = choice;
+      history.push(message);
+
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        const toolResults = [];
+        for (const toolCall of message.tool_calls) {
+          const handler = toolHandlers[toolCall.function.name];
+          if (handler) {
+            const args = JSON.parse(toolCall.function.arguments);
+            const result = await handler(args);
+            toolResults.push({ tool_call_id: toolCall.id, content: result });
+          }
+        }
+        history.push({ role: "tool", content: toolResults });
+      } else {
+        continueConversation = false;
+        res.json(choice);
+      }
+    }
+  } catch (error) {
+    console.error("Tool-use loop error:", error);
+    res.status(500).json({ error: "An error occurred during the conversation: " + error.message });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Isolated AI Builder Agent is running on http://localhost:${PORT}`);
+});

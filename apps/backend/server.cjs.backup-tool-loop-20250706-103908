@@ -1,0 +1,99 @@
+const express = require("express");
+const cors = require("cors");
+const fs = require("fs").promises;
+const path = require("path");
+require("dotenv").config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// --- CONFIGURATION ---
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+const WORKSPACE_DIR = path.resolve(__dirname, '..', '..', 'generated-projects'); // Securely sandbox projects
+
+// Ensure the workspace directory exists
+fs.mkdir(WORKSPACE_DIR, { recursive: true });
+
+// --- MASTER SYSTEM PROMPT ---
+const systemPrompt = `You are the Lead Project Manager of an elite AI development team. Your role is to understand the user's high-level goal and orchestrate a team of specialized AI agents to build, test, and debug the application. Your primary interface is a set of tools for file system manipulation and command execution.
+
+Your Core Directives:
+1.  **Plan First:** For any non-trivial request, first present a clear, numbered, step-by-step implementation plan for the user to review and approve.
+2.  **Delegate to Your Team & Use Tools:** For each step, you will delegate the task to an agent by calling the appropriate tool. Your available tools are: 'listFiles', 'readFile', and 'writeFile'.
+3.  **Build, Don't Advise:** Your purpose is to actively build the application. The output should be tool calls that result in code, plans, and actions.
+4.  **Continuous Learning:** After successfully executing a new complex task, you must state: "I am saving this procedure to my knowledge base for future use."
+5.  **Proactive Quality Assurance:** After the Coder Agent writes code, you MUST immediately call the 'readFile' tool to verify the code was written correctly before proceeding.`;
+
+// --- MAIN CHAT ENDPOINT ---
+app.post("/api/chat", async (req, res) => {
+  // This logic will be expanded later to handle tool use from the AI
+  console.log("Received request body:", JSON.stringify(req.body, null, 2));
+  const { messages } = req.body;
+  if (!messages) return res.status(400).json({ error: "Messages are required" });
+
+  try {
+    const aiResponse = await fetch(PERPLEXITY_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+      body: JSON.stringify({ model: "sonar-pro", system: systemPrompt, messages: messages }),
+    });
+    const data = await aiResponse.json();
+    console.log("Full response from Perplexity AI:", JSON.stringify(data, null, 2));
+    if (!aiResponse.ok || data.error) throw new Error(data.error?.message || "AI API Error");
+    res.json(data);
+  } catch (error) {
+    console.error("AI Chat Error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- NEW FILE SYSTEM API ENDPOINTS ---
+
+// Helper function to create a secure, sandboxed file path
+const getSafePath = (filePath) => {
+  const resolvedPath = path.resolve(WORKSPACE_DIR, filePath);
+  if (!resolvedPath.startsWith(WORKSPACE_DIR)) {
+    throw new Error("Access denied: File path is outside the allowed workspace.");
+  }
+  return resolvedPath;
+};
+
+// 1. List files endpoint
+app.get("/api/fs/list", async (req, res) => {
+  try {
+    const files = await fs.readdir(WORKSPACE_DIR, { withFileTypes: true, recursive: true });
+    const fileList = files.map(file => path.join(file.path.replace(WORKSPACE_DIR, ''), file.name));
+    res.json(fileList);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to list files: " + error.message });
+  }
+});
+
+// 2. Read file endpoint
+app.post("/api/fs/read", async (req, res) => {
+  try {
+    const safePath = getSafePath(req.body.path);
+    const content = await fs.readFile(safePath, "utf-8");
+    res.json({ content });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to read file: " + error.message });
+  }
+});
+
+// 3. Write file endpoint
+app.post("/api/fs/write", async (req, res) => {
+  try {
+    const safePath = getSafePath(req.body.path);
+    await fs.mkdir(path.dirname(safePath), { recursive: true });
+    await fs.writeFile(safePath, req.body.content, "utf-8");
+    res.json({ success: true, message: `File saved to ${req.body.path}` });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to write file: " + error.message });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Backend server is running on http://localhost:${PORT}`);
+});

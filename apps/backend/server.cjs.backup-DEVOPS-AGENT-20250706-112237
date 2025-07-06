@@ -1,0 +1,83 @@
+const express = require("express");
+const cors = require("cors");
+const fs = require("fs").promises;
+const path = require("path");
+require("dotenv").config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+const WORKSPACE_DIR = path.resolve(__dirname, '..', '..', 'generated-projects');
+const API_TIMEOUT = 45000; // 45 seconds
+
+fs.mkdir(WORKSPACE_DIR, { recursive: true });
+
+const getSafePath = (filePath) => {
+  if (!filePath || typeof filePath !== 'string') throw new Error("Invalid path provided.");
+  const resolvedPath = path.resolve(WORKSPACE_DIR, filePath);
+  if (!resolvedPath.startsWith(WORKSPACE_DIR)) throw new Error("Access denied.");
+  return resolvedPath;
+};
+
+const tools = [
+  { type: "function", function: { name: "listFiles", description: "List files", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "readFile", description: "Read a file", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } } },
+  { type: "function", function: { name: "writeFile", description: "Write a file", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } } }
+];
+
+const toolHandlers = {
+  listFiles: async () => (await fs.readdir(WORKSPACE_DIR, { withFileTypes: true, recursive: true })).map(file => path.join(file.path.replace(WORKSPACE_DIR, ''), file.name)).join('\n'),
+  readFile: async ({ path: filePath }) => fs.readFile(getSafePath(filePath), "utf-8"),
+  writeFile: async ({ path: filePath, content }) => {
+    const safePath = getSafePath(filePath);
+    await fs.mkdir(path.dirname(safePath), { recursive: true });
+    await fs.writeFile(safePath, content, "utf-8");
+    return `Wrote ${content.length} bytes to ${filePath}`;
+  },
+};
+
+const systemPrompt = `You are a file system bot. Your only purpose is to execute file operations. You CANNOT search or answer questions. Use tools: 'listFiles', 'readFile', 'writeFile'. MANDATORY: After every 'writeFile', you MUST call 'readFile' on the same file to verify.`;
+
+app.get("/", (req, res) => res.json({ status: "online", agent: "Autonomous AI Software Engineer" }));
+
+app.post("/api/chat", async (req, res) => {
+  const history = req.body.messages || [];
+  if (history.length === 0) return res.status(400).json({ error: "Messages are required" });
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+    const response = await fetch(PERPLEXITY_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+      body: JSON.stringify({ model: "r1-1776", system: systemPrompt, messages: history, tools: tools }),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || `API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    // This part of the logic needs to be updated to handle tool calls correctly
+    res.json(data);
+
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.error("API call timed out.");
+      res.status(504).json({ error: "The request to the AI service timed out. Please try again." });
+    } else {
+      console.error("Chat endpoint error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Autonomous AI Software Engineer is online on http://localhost:${PORT}`));
