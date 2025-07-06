@@ -69,7 +69,7 @@ app.post("/api/chat", async (req, res) => {
       if (/^(yes|ok|looks good|approve|continue|proceed)/i.test(lastUserMessage.content)) {
         currentPhase = 'IMPLEMENTING';
       }
-    } else if (history.length > 2) {
+    } else if (history.length > 2 && lastAssistantMessage) {
       currentPhase = 'IMPLEMENTING';
     }
 
@@ -85,7 +85,7 @@ app.post("/api/chat", async (req, res) => {
                 model: "llama-3-sonar-large-32k-chat",
                 system: systemPrompt,
                 messages: localHistory,
-                tools: (currentPhase === 'IMPLEMENTING') ? tools : undefined, // Only provide tools in the IMPLEMENTING phase
+                tools: (currentPhase === 'IMPLEMENTING') ? tools : undefined, // Only provide tools in IMPLEMENTING phase
             }),
         });
 
@@ -101,13 +101,15 @@ app.post("/api/chat", async (req, res) => {
         if (choice.finish_reason === 'tool_calls') {
             for (const toolCall of choice.message.tool_calls) {
                 const handler = toolHandlers[toolCall.function.name];
-                const args = JSON.parse(toolCall.function.arguments);
-                const result = await handler(args);
-                localHistory.push({ role: "tool", tool_call_id: toolCall.id, content: result });
+                if(handler) {
+                    const args = JSON.parse(toolCall.function.arguments);
+                    const result = await handler(args);
+                    localHistory.push({ role: "tool", tool_call_id: toolCall.id, content: result });
+                }
             }
         } else {
             continueConversation = false;
-            res.json(choice.message); // Send the final conversational message to the frontend
+            res.json(choice.message); // Send the final conversational message
         }
     }
   } catch (error) {

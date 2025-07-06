@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { API_BASE_URL } from "@/config";
 
 interface DisplayMessage {
   role: "user" | "assistant";
@@ -21,7 +20,7 @@ export function useAIChat() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+      const response = await fetch("http://localhost:3001/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: history }),
@@ -29,7 +28,8 @@ export function useAIChat() {
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "An unknown server error occurred.");
-      
+
+      // The backend now sends a final, clean message object.
       if (data && data.content) {
         const aiMessage: DisplayMessage = {
           role: "assistant",
@@ -40,6 +40,7 @@ export function useAIChat() {
         throw new Error("Received an invalid response from the AI service.");
       }
     } catch (e: any) {
+      console.error("Frontend Chat Error:", e);
       setError(e.message || "An unknown error occurred.");
     } finally {
       setIsLoading(false);
