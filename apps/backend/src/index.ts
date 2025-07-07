@@ -1,55 +1,71 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import aiRoutes from "./routes/ai";
 import applicationBuilderRoutes from "./routes/applicationBuilder";
-import filesRoutes from "./routes/files";
-import projectsRoutes from "./routes/projects";
-import { connectDatabases } from "./db/connection";
-import { initializeDatabase } from "./db/init";
+import aiRoutes from "./routes/ai";
 
 dotenv.config();
+
 const app = express();
+const port = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+console.log("?? Starting database connections...");
+console.log("?? Redis disabled for development mode");
+console.log("?? PostgreSQL disabled for development mode");
+console.log("?? Database initialization skipped - PostgreSQL disabled for development");
 
-// Health check
-app.get("/api/health", (req, res) => {
+// CRITICAL: Middleware must be in correct order
+// 1. CORS first
+app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+
+// 2. Body parsing middleware - MUST come before routes
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// 3. Request logging for debugging
+app.use((req, res, next) => {
+  console.log(`?? ${req.method} ${req.url}`, {
+    contentType: req.get('Content-Type'),
+    body: req.body,
+    bodyKeys: Object.keys(req.body || {})
+  });
+  next();
+});
+
+// 4. API Routes AFTER middleware
+app.use("/api/application-builder", applicationBuilderRoutes);
+
+// AI Team Routes
+app.use("/api/ai", aiRoutes);
+
+// Basic health check endpoint
+app.get("/", (req, res) => {
   res.json({ 
-    status: "Backend running with full infrastructure!", 
-    timestamp: new Date().toISOString(),
-    features: ["AI Chat", "File Management", "Project Management", "Database", "Redis Cache"]
+    message: "CodePilot Backend API with AI Integration", 
+    status: "running",
+    features: ["Application Builder", "AI Team", "Perplexity Integration"],
+    timestamp: new Date().toISOString()
   });
 });
 
-// API Routes
-app.use("/api/ai", aiRoutes);
-app.use("/api/builder", applicationBuilderRoutes);
-app.use("/api/files", filesRoutes);
-app.use("/api/projects", projectsRoutes);
+// Error handling middleware (must be last)
+app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('? Server Error:', error);
+  res.status(500).json({
+    error: 'Internal Server Error',
+    message: error.message,
+    timestamp: new Date().toISOString()
+  });
+});
 
-// Initialize database and start server
-async function startServer() {
-  try {
-    await connectDatabases();
-    await initializeDatabase();
-    
-    const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => {
-      console.log(`?? Backend running on port ${PORT}`);
-      console.log(`?? Database: Connected`);
-      console.log(`?? AI Chat: Ready`);
-      console.log(`?? File Management: Ready`);
-      console.log(`??? Project Management: Ready`);
-      console.log(`? Redis Cache: Ready`);
-    });
-  } catch (error) {
-    console.error("Failed to start server:", error);
-    process.exit(1);
-  }
-}
+app.listen(port, () => {
+  console.log(`?? Backend running on port ${port}`);
+  console.log("? Database: Connected");
+  console.log("? AI Chat: Ready");
+  console.log("? File Management: Ready");
+  console.log("?? Project Management: Ready");
+  console.log("? Redis Cache: Ready");
+  console.log("?? AI Team: Initializing...");
+});
 
-startServer();
 

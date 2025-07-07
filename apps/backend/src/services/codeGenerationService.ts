@@ -1,1163 +1,462 @@
-import fs from 'fs';
-import path from 'path';
+import OpenAI from 'openai';
 
-export interface GeneratedFile {
+interface Plan {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  techStack: string[];
+}
+
+interface GeneratedFile {
+  name: string;
   path: string;
   content: string;
-  type: 'html' | 'css' | 'js' | 'tsx' | 'jsx' | 'json' | 'md';
+  type: string;
 }
 
-export interface BuildResult {
-  buildId: string;
-  projectPath: string;
-  files: GeneratedFile[];
-  status: 'completed' | 'failed' | 'in-progress';
-  error?: string;
-}
-
-export class CodeGenerationService {
-  private buildsDir: string;
+class CodeGenerationService {
+  private openai: OpenAI | null = null;
 
   constructor() {
-    this.buildsDir = path.join(process.cwd(), 'generated-projects');
-    this.ensureBuildsDirectorySync();
+    // Initialize OpenAI only if API key is available
+    if (process.env.OPENAI_API_KEY) {
+      this.openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+    }
   }
 
-  private ensureBuildsDirectorySync() {
+  async generateProjectFiles(plan: Plan): Promise<GeneratedFile[]> {
+    const files: GeneratedFile[] = [];
+
     try {
-      if (!fs.existsSync(this.buildsDir)) {
-        fs.mkdirSync(this.buildsDir, { recursive: true });
-        console.log('? Created generated-projects directory');
+      // Use AI generation if available, otherwise use enhanced templates
+      if (this.openai) {
+        console.log('?? Using AI-powered generation');
+        return await this.generateWithAI(plan);
+      } else {
+        console.log('? Using enhanced template generation');
+        return await this.generateWithEnhancedTemplates(plan);
       }
     } catch (error) {
-      console.error('Failed to create builds directory:', error);
+      console.error('? Generation error, falling back to templates:', error);
+      return await this.generateWithEnhancedTemplates(plan);
     }
   }
 
-  generateCookieWebsite(buildId: string): BuildResult {
-    console.log(`?? Generating cookie website with buildId: ${buildId}`);
+  private async generateWithAI(plan: Plan): Promise<GeneratedFile[]> {
+    const files: GeneratedFile[] = [];
+
+    // Generate package.json with AI
+    const packagePrompt = `Generate a complete package.json for a ${plan.type} project called "${plan.name}". 
+    Description: ${plan.description}
+    Tech stack: ${plan.techStack.join(', ')}
+    Make it production-ready with proper dependencies, scripts, and metadata.`;
+
+    const packageResponse = await this.openai!.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: packagePrompt }],
+      temperature: 0.7
+    });
+
+    files.push({
+      name: 'package.json',
+      path: 'package.json',
+      content: this.extractCodeFromResponse(packageResponse.choices[0].message.content || ''),
+      type: 'json'
+    });
+
+    // Generate main application file with AI
+    const appPrompt = `Create a complete, functional ${plan.techStack.includes('React') ? 'React' : 'JavaScript'} application for: ${plan.description}
     
-    const projectPath = path.join(this.buildsDir, buildId);
+    Requirements:
+    - Project name: ${plan.name}
+    - Type: ${plan.type}
+    - Make it fully functional with realistic features
+    - Include proper state management
+    - Add interactive components
+    - Use modern best practices
     
-    try {
-      // Ensure builds directory exists
-      this.ensureBuildsDirectorySync();
-      
-      // Create project directory
-      if (!fs.existsSync(projectPath)) {
-        fs.mkdirSync(projectPath, { recursive: true });
-        console.log(`? Created project directory: ${projectPath}`);
-      }
-      
-      const files: GeneratedFile[] = [
-        this.generateIndexHTML(),
-        this.generateStylesCSS(),
-        this.generateAppJS(),
-        this.generatePackageJSON(),
-        this.generateREADME()
-      ];
+    Return only the code, no explanations.`;
 
-      console.log(`?? Writing ${files.length} files to ${projectPath}`);
+    const appResponse = await this.openai!.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: appPrompt }],
+      temperature: 0.8
+    });
 
-      // Write all files to disk synchronously
-      for (const file of files) {
-        const filePath = path.join(projectPath, file.path);
-        const fileDir = path.dirname(filePath);
-        
-        // Ensure directory exists
-        if (!fs.existsSync(fileDir)) {
-          fs.mkdirSync(fileDir, { recursive: true });
-        }
-        
-        // Write file content
-        fs.writeFileSync(filePath, file.content, 'utf8');
-        console.log(`? Created file: ${file.path} (${file.content.length} bytes)`);
-      }
+    files.push({
+      name: plan.techStack.includes('React') ? 'App.tsx' : 'app.js',
+      path: plan.techStack.includes('React') ? 'src/App.tsx' : 'app.js',
+      content: this.extractCodeFromResponse(appResponse.choices[0].message.content || ''),
+      type: plan.techStack.includes('React') ? 'tsx' : 'js'
+    });
 
-      console.log(`?? Successfully generated ${files.length} files for ${buildId}`);
+    // Generate HTML with AI
+    const htmlPrompt = `Create a complete index.html file for "${plan.name}" - ${plan.description}
+    Include proper meta tags, title, and structure for a ${plan.type} application.
+    Make it professional and production-ready.`;
 
-      return {
-        buildId,
-        projectPath,
-        files,
-        status: 'completed'
-      };
+    const htmlResponse = await this.openai!.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: htmlPrompt }],
+      temperature: 0.6
+    });
 
-    } catch (error: any) {
-      console.error(`? Build failed for ${buildId}:`, error);
-      return {
-        buildId,
-        projectPath,
-        files: [],
-        status: 'failed',
-        error: error.message
-      };
-    }
-  }
-
-  private generateIndexHTML(): GeneratedFile {
-    return {
+    files.push({
+      name: 'index.html',
       path: 'index.html',
-      type: 'html',
-      content: `<!DOCTYPE html>
+      content: this.extractCodeFromResponse(htmlResponse.choices[0].message.content || ''),
+      type: 'html'
+    });
+
+    return files;
+  }
+
+  private async generateWithEnhancedTemplates(plan: Plan): Promise<GeneratedFile[]> {
+    const files: GeneratedFile[] = [];
+    
+    // Enhanced dynamic templates with variation
+    const timestamp = Date.now();
+    const randomFeatures = this.generateRandomFeatures(plan.type);
+    
+    // Dynamic package.json based on actual project requirements
+    files.push({
+      name: 'package.json',
+      path: 'package.json',
+      content: JSON.stringify({
+        name: plan.name.toLowerCase().replace(/\s+/g, '-'),
+        version: '1.0.0',
+        description: `${plan.description} - Generated by CodePilot AI`,
+        main: plan.techStack.includes('React') ? 'src/App.tsx' : 'app.js',
+        scripts: {
+          dev: plan.techStack.includes('Vite') ? 'vite' : 'node app.js',
+          build: plan.techStack.includes('React') ? 'tsc && vite build' : 'echo "No build step"',
+          preview: plan.techStack.includes('Vite') ? 'vite preview' : 'node app.js',
+          test: 'echo "No tests yet"'
+        },
+        dependencies: this.getDynamicDependencies(plan),
+        devDependencies: this.getDynamicDevDependencies(plan),
+        keywords: this.generateKeywords(plan),
+        author: 'CodePilot AI',
+        license: 'MIT',
+        repository: {
+          type: 'git',
+          url: `https://github.com/codepilot-ai/${plan.name.toLowerCase().replace(/\s+/g, '-')}`
+        }
+      }, null, 2),
+      type: 'json'
+    });
+
+    // Dynamic application code with real functionality
+    files.push({
+      name: plan.techStack.includes('React') ? 'App.tsx' : 'app.js',
+      path: plan.techStack.includes('React') ? 'src/App.tsx' : 'app.js',
+      content: this.generateDynamicAppCode(plan, randomFeatures),
+      type: plan.techStack.includes('React') ? 'tsx' : 'js'
+    });
+
+    // Enhanced HTML with dynamic content
+    files.push({
+      name: 'index.html',
+      path: 'index.html',
+      content: this.generateDynamicHTML(plan),
+      type: 'html'
+    });
+
+    // Dynamic CSS with theme variations
+    files.push({
+      name: 'styles.css',
+      path: 'styles.css',
+      content: this.generateDynamicCSS(plan),
+      type: 'css'
+    });
+
+    // Dynamic README with real project details
+    files.push({
+      name: 'README.md',
+      path: 'README.md',
+      content: this.generateDynamicREADME(plan, randomFeatures),
+      type: 'md'
+    });
+
+    return files;
+  }
+
+  private extractCodeFromResponse(response: string): string {
+    // Extract code from markdown code blocks
+    const codeMatch = response.match(/``````/);
+    return codeMatch ? codeMatch[1] : response;
+  }
+
+  private generateRandomFeatures(projectType: string): string[] {
+    const features = {
+      ecommerce: ['shopping cart', 'product search', 'user reviews', 'payment integration', 'inventory tracking'],
+      blog: ['comment system', 'tag filtering', 'social sharing', 'RSS feed', 'author profiles'],
+      dashboard: ['real-time charts', 'data export', 'user management', 'analytics widgets', 'notification system'],
+      general: ['responsive design', 'dark mode', 'user authentication', 'API integration', 'progressive web app']
+    };
+    
+    const availableFeatures = features[projectType] || features.general;
+    return availableFeatures.sort(() => 0.5 - Math.random()).slice(0, 3);
+  }
+
+  private getDynamicDependencies(plan: Plan): Record<string, string> {
+    const deps: Record<string, string> = {};
+    
+    if (plan.techStack.includes('React')) {
+      deps.react = '^18.2.0';
+      deps['react-dom'] = '^18.2.0';
+    }
+    
+    if (plan.techStack.includes('TypeScript')) {
+      deps.typescript = '^5.0.0';
+      deps['@types/react'] = '^18.2.0';
+      deps['@types/react-dom'] = '^18.2.0';
+    }
+    
+    if (plan.techStack.includes('Stripe')) {
+      deps['@stripe/stripe-js'] = '^2.1.0';
+    }
+    
+    if (plan.type === 'ecommerce') {
+      deps.axios = '^1.5.0';
+      deps['react-router-dom'] = '^6.15.0';
+    }
+    
+    return deps;
+  }
+
+  private getDynamicDevDependencies(plan: Plan): Record<string, string> {
+    const devDeps: Record<string, string> = {};
+    
+    if (plan.techStack.includes('Vite')) {
+      devDeps.vite = '^4.4.0';
+      devDeps['@vitejs/plugin-react'] = '^4.0.0';
+    }
+    
+    if (plan.techStack.includes('Tailwind CSS')) {
+      devDeps.tailwindcss = '^3.3.0';
+      devDeps.autoprefixer = '^10.4.0';
+      devDeps.postcss = '^8.4.0';
+    }
+    
+    return devDeps;
+  }
+
+  private generateKeywords(plan: Plan): string[] {
+    const baseKeywords = ['codepilot', 'ai-generated', plan.type];
+    const typeKeywords = {
+      ecommerce: ['shopping', 'store', 'commerce', 'retail'],
+      blog: ['content', 'writing', 'publishing', 'cms'],
+      dashboard: ['analytics', 'monitoring', 'data', 'visualization']
+    };
+    
+    return [...baseKeywords, ...(typeKeywords[plan.type] || [])];
+  }
+
+  private generateDynamicAppCode(plan: Plan, features: string[]): string {
+    // This would generate much more dynamic code based on the plan
+    // For now, enhanced template with variations
+    const variations = [
+      'gradient-to-br from-blue-500 to-purple-600',
+      'gradient-to-tr from-green-400 to-blue-500',
+      'gradient-to-bl from-pink-500 to-yellow-500'
+    ];
+    
+    const selectedGradient = variations[Math.floor(Math.random() * variations.length)];
+    
+    return `// Generated by CodePilot AI - ${new Date().toISOString()}
+import React, { useState, useEffect } from 'react';
+
+// Dynamic features: ${features.join(', ')}
+const features = ${JSON.stringify(features, null, 2)};
+
+export default function App() {
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  useEffect(() => {
+    setIsLoaded(true);
+  }, []);
+  
+  return (
+    <div className="min-h-screen bg-${selectedGradient} flex items-center justify-center">
+      <div className="text-center text-white p-8 rounded-lg backdrop-blur-sm bg-white/10">
+        <h1 className="text-4xl font-bold mb-4">${plan.name}</h1>
+        <p className="text-xl mb-6">${plan.description}</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+          {features.map((feature, index) => (
+            <div key={index} className="bg-white/20 p-4 rounded-lg">
+              <h3 className="font-semibold capitalize">{feature}</h3>
+              <p className="text-sm opacity-75">Coming soon</p>
+            </div>
+          ))}
+        </div>
+        
+        <div className="mt-8 text-sm opacity-75">
+          Generated by CodePilot AI • Project ID: ${plan.id}
+        </div>
+      </div>
+    </div>
+  );
+}`;
+  }
+
+  private generateDynamicHTML(plan: Plan): string {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>?? Sweet Cookie Shop - Generated by CodePilot AI</title>
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${plan.name} - ${plan.description}</title>
+  <meta name="description" content="${plan.description} - Built with CodePilot AI">
+  <meta name="keywords" content="${this.generateKeywords(plan).join(', ')}">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>??</text></svg>">
 </head>
 <body>
-    <!-- Header -->
-    <header class="header">
-        <nav class="nav">
-            <div class="logo">
-                <i class="fas fa-cookie-bite"></i>
-                <span>Sweet Cookie Shop</span>
-            </div>
-            <ul class="nav-links">
-                <li><a href="#home">Home</a></li>
-                <li><a href="#products">Cookies</a></li>
-                <li><a href="#about">About</a></li>
-                <li><a href="#contact">Contact</a></li>
-                <li><a href="#" class="cart-btn" onclick="showCart()">
-                    <i class="fas fa-shopping-cart"></i> Cart (<span id="cart-count">0</span>)
-                </a></li>
-            </ul>
-        </nav>
-    </header>
-
-    <!-- Hero Section -->
-    <section id="home" class="hero">
-        <div class="hero-content">
-            <h1>?? Freshly Baked Cookies</h1>
-            <p>Handcrafted with love, delivered fresh to your door</p>
-            <div class="ai-badge">
-                <i class="fas fa-robot"></i>
-                <span>?? Built by CodePilot AI in seconds!</span>
-            </div>
-            <button class="cta-btn" onclick="scrollToSection('products')">
-                <i class="fas fa-cookie"></i> Shop Now
-            </button>
-        </div>
-    </section>
-
-    <!-- Products Section -->
-    <section id="products" class="products">
-        <div class="container">
-            <h2>Our Delicious Cookies</h2>
-            <div class="product-grid" id="product-grid">
-                <!-- Products will be loaded by JavaScript -->
-            </div>
-        </div>
-    </section>
-
-    <!-- About Section -->
-    <section id="about" class="about">
-        <div class="container">
-            <div class="about-content">
-                <div class="about-text">
-                    <h2>About Sweet Cookie Shop</h2>
-                    <p>We've been baking premium cookies since 2020, using only the finest ingredients and time-tested family recipes. Each cookie is made fresh daily in small batches to ensure maximum flavor and quality.</p>
-                    <div class="ai-info">
-                        <h3>?? Built with AI Magic</h3>
-                        <p>This entire website was generated by <strong>CodePilot AI</strong> in under 30 seconds! From design to functionality, everything was automatically created based on your request.</p>
-                    </div>
-                    <div class="features">
-                        <div class="feature">
-                            <i class="fas fa-leaf"></i>
-                            <span>Organic Ingredients</span>
-                        </div>
-                        <div class="feature">
-                            <i class="fas fa-truck"></i>
-                            <span>Fresh Delivery</span>
-                        </div>
-                        <div class="feature">
-                            <i class="fas fa-heart"></i>
-                            <span>Made with Love</span>
-                        </div>
-                        <div class="feature">
-                            <i class="fas fa-robot"></i>
-                            <span>AI Generated</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="about-image">
-                    <div class="image-placeholder">
-                        <i class="fas fa-cookie-bite"></i>
-                        <p>Artisan Cookie Making</p>
-                        <small>?? Generated by CodePilot</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Shopping Cart Modal -->
-    <div id="cart-modal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeCart()">&times;</span>
-            <h2>?? Shopping Cart</h2>
-            <div id="cart-items"></div>
-            <div class="cart-total">
-                <strong>Total: $<span id="cart-total">0.00</span></strong>
-            </div>
-            <button class="checkout-btn" onclick="checkout()">
-                <i class="fas fa-credit-card"></i> Checkout Now
-            </button>
-        </div>
-    </div>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-section">
-                    <h3>?? Sweet Cookie Shop</h3>
-                    <p>Bringing you the finest homemade cookies since 2020</p>
-                    <div class="ai-credit">
-                        <p><i class="fas fa-robot"></i> <strong>Powered by CodePilot AI</strong></p>
-                        <p>Generated: ${new Date().toLocaleDateString()}</p>
-                    </div>
-                </div>
-                <div class="footer-section">
-                    <h3>Quick Links</h3>
-                    <ul>
-                        <li><a href="#home">Home</a></li>
-                        <li><a href="#products">Cookies</a></li>
-                        <li><a href="#about">About</a></li>
-                    </ul>
-                </div>
-                <div class="footer-section">
-                    <h3>Follow Us</h3>
-                    <div class="social-links">
-                        <a href="#"><i class="fab fa-facebook"></i></a>
-                        <a href="#"><i class="fab fa-instagram"></i></a>
-                        <a href="#"><i class="fab fa-twitter"></i></a>
-                    </div>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; 2025 Sweet Cookie Shop. Generated by CodePilot AI ?</p>
-            </div>
-        </div>
-    </footer>
-
-    <script src="app.js"></script>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+  <!-- Generated by CodePilot AI on ${new Date().toISOString()} -->
 </body>
-</html>`
-    };
+</html>`;
   }
 
-  private generateStylesCSS(): GeneratedFile {
-    return {
-      path: 'styles.css',
-      type: 'css',
-      content: `/* Sweet Cookie Shop - Generated by CodePilot AI */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  private generateDynamicCSS(plan: Plan): string {
+    const colorSchemes = [
+      { primary: '#3B82F6', secondary: '#8B5CF6', accent: '#10B981' },
+      { primary: '#EF4444', secondary: '#F59E0B', accent: '#8B5CF6' },
+      { primary: '#10B981', secondary: '#3B82F6', accent: '#F59E0B' }
+    ];
+    
+    const colors = colorSchemes[Math.floor(Math.random() * colorSchemes.length)];
+    
+    return `/* Generated by CodePilot AI for ${plan.name} */
+/* Project Type: ${plan.type} */
+/* Generated: ${new Date().toISOString()} */
+
+:root {
+  --primary-color: ${colors.primary};
+  --secondary-color: ${colors.secondary};
+  --accent-color: ${colors.accent};
 }
 
 body {
-    font-family: 'Arial', sans-serif;
-    line-height: 1.6;
-    color: #333;
-    background-color: #fff8f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
 }
 
 .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
 }
 
-/* Header */
-.header {
-    background: linear-gradient(135deg, #8B4513, #D2691E);
-    color: white;
-    padding: 1rem 0;
-    position: fixed;
-    width: 100%;
-    top: 0;
-    z-index: 1000;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+.card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 1rem;
+  padding: 2rem;
+  margin: 1rem 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 20px;
+/* Dynamic animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.logo {
-    display: flex;
-    align-items: center;
-    font-size: 1.5rem;
-    font-weight: bold;
+.fade-in {
+  animation: fadeInUp 0.6s ease-out;
 }
 
-.logo i {
-    margin-right: 10px;
-    font-size: 2rem;
-    color: #FFD700;
-}
-
-.nav-links {
-    display: flex;
-    list-style: none;
-    gap: 2rem;
-}
-
-.nav-links a {
-    color: white;
-    text-decoration: none;
-    transition: color 0.3s ease;
-}
-
-.nav-links a:hover {
-    color: #FFD700;
-}
-
-.cart-btn {
-    background: rgba(255,255,255,0.2);
-    padding: 0.5rem 1rem;
-    border-radius: 25px;
-    cursor: pointer;
-    transition: background 0.3s ease;
-}
-
-.cart-btn:hover {
-    background: rgba(255,255,255,0.3);
-}
-
-/* Hero Section */
-.hero {
-    background: linear-gradient(135deg, #FF6B35, #F7931E);
-    color: white;
-    text-align: center;
-    padding: 150px 0 100px;
-    margin-top: 80px;
-}
-
-.hero-content h1 {
-    font-size: 3.5rem;
-    margin-bottom: 1rem;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-}
-
-.hero-content p {
-    font-size: 1.2rem;
-    margin-bottom: 1rem;
-    opacity: 0.9;
-}
-
-.ai-badge {
-    background: rgba(255,255,255,0.2);
-    padding: 0.8rem 1.5rem;
-    border-radius: 30px;
-    display: inline-block;
-    margin-bottom: 2rem;
-    font-weight: bold;
-    border: 2px solid rgba(255,255,255,0.3);
-}
-
-.ai-badge i {
-    margin-right: 0.5rem;
-    color: #FFD700;
-}
-
-.cta-btn {
-    background: #8B4513;
-    color: white;
-    border: none;
-    padding: 15px 30px;
-    font-size: 1.1rem;
-    border-radius: 50px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-}
-
-.cta-btn:hover {
-    background: #A0522D;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-}
-
-/* Products Section */
-.products {
-    padding: 80px 0;
-    background: white;
-}
-
-.products h2 {
-    text-align: center;
-    font-size: 2.5rem;
-    margin-bottom: 50px;
-    color: #8B4513;
-}
-
-.product-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 30px;
-    margin-top: 40px;
-}
-
-.product-card {
-    background: white;
-    border-radius: 15px;
-    padding: 25px;
-    text-align: center;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    border: 2px solid #f0f0f0;
-}
-
-.product-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 15px 30px rgba(0,0,0,0.15);
-}
-
-.product-image {
-    width: 150px;
-    height: 150px;
-    background: linear-gradient(135deg, #FFE4B5, #DEB887);
-    border-radius: 50%;
-    margin: 0 auto 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 3rem;
-    color: #8B4513;
-}
-
-.product-card h3 {
-    font-size: 1.5rem;
-    color: #8B4513;
-    margin-bottom: 10px;
-}
-
-.product-card p {
-    color: #666;
-    margin-bottom: 15px;
-    line-height: 1.5;
-}
-
-.product-price {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #FF6B35;
-    margin-bottom: 20px;
-}
-
-.add-to-cart {
-    background: #FF6B35;
-    color: white;
-    border: none;
-    padding: 12px 25px;
-    border-radius: 25px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-weight: bold;
-}
-
-.add-to-cart:hover {
-    background: #E55A2B;
-    transform: scale(1.05);
-}
-
-/* About Section */
-.about {
-    padding: 80px 0;
-    background: #fff8f5;
-}
-
-.about-content {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 50px;
-    align-items: center;
-}
-
-.about h2 {
-    font-size: 2.5rem;
-    color: #8B4513;
-    margin-bottom: 20px;
-}
-
-.about p {
-    font-size: 1.1rem;
-    color: #666;
-    margin-bottom: 20px;
-    line-height: 1.7;
-}
-
-.ai-info {
-    background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
-    padding: 20px;
-    border-radius: 10px;
-    margin: 20px 0;
-    border-left: 4px solid #FF6B35;
-}
-
-.ai-info h3 {
-    color: #8B4513;
-    margin-bottom: 10px;
-}
-
-.features {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.feature {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    font-weight: bold;
-    color: #8B4513;
-}
-
-.feature i {
-    background: #FF6B35;
-    color: white;
-    padding: 10px;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.image-placeholder {
-    background: linear-gradient(135deg, #FFE4B5, #DEB887);
-    height: 300px;
-    border-radius: 15px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: #8B4513;
-    font-size: 1.2rem;
-    font-weight: bold;
-}
-
-.image-placeholder i {
-    font-size: 4rem;
-    margin-bottom: 15px;
-}
-
-.image-placeholder small {
-    margin-top: 10px;
-    opacity: 0.7;
-}
-
-/* Modal */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 2000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-}
-
-.modal-content {
-    background-color: white;
-    margin: 10% auto;
-    padding: 30px;
-    border-radius: 15px;
-    width: 90%;
-    max-width: 500px;
-    position: relative;
-}
-
-.close {
-    position: absolute;
-    right: 20px;
-    top: 15px;
-    font-size: 2rem;
-    cursor: pointer;
-    color: #999;
-}
-
-.close:hover {
-    color: #333;
-}
-
-.cart-total {
-    text-align: center;
-    margin: 20px 0;
-    font-size: 1.2rem;
-}
-
-.checkout-btn {
-    width: 100%;
-    background: #FF6B35;
-    color: white;
-    border: none;
-    padding: 15px;
-    border-radius: 10px;
-    font-size: 1.1rem;
-    cursor: pointer;
-    transition: background 0.3s ease;
-}
-
-.checkout-btn:hover {
-    background: #E55A2B;
-}
-
-/* Footer */
-.footer {
-    background: #8B4513;
-    color: white;
-    padding: 50px 0 20px;
-}
-
-.footer-content {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 40px;
-}
-
-.footer-section h3 {
-    margin-bottom: 20px;
-    color: #FFD700;
-}
-
-.ai-credit {
-    margin-top: 15px;
-    padding: 15px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 8px;
-    font-size: 0.9rem;
-}
-
-.ai-credit p {
-    margin: 5px 0;
-}
-
-.footer-section ul {
-    list-style: none;
-}
-
-.footer-section ul li {
-    margin-bottom: 10px;
-}
-
-.footer-section a {
-    color: white;
-    text-decoration: none;
-    transition: color 0.3s ease;
-}
-
-.footer-section a:hover {
-    color: #FFD700;
-}
-
-.social-links {
-    display: flex;
-    gap: 15px;
-}
-
-.social-links a {
-    background: rgba(255,255,255,0.2);
-    padding: 10px;
-    border-radius: 50%;
-    transition: background 0.3s ease;
-}
-
-.social-links a:hover {
-    background: rgba(255,255,255,0.3);
-}
-
-.footer-bottom {
-    margin-top: 30px;
-    padding-top: 20px;
-    border-top: 1px solid rgba(255,255,255,0.2);
-    text-align: center;
-}
-
-/* Responsive Design */
+/* Responsive design */
 @media (max-width: 768px) {
-    .nav-links {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .hero-content h1 {
-        font-size: 2.5rem;
-    }
-    
-    .about-content {
-        grid-template-columns: 1fr;
-    }
-    
-    .product-grid {
-        grid-template-columns: 1fr;
-    }
-}`
-    };
+  .container {
+    padding: 1rem;
+  }
+}`;
   }
 
-  private generateAppJS(): GeneratedFile {
-    return {
-      path: 'app.js',
-      type: 'js',
-      content: `// Sweet Cookie Shop - Generated by CodePilot AI
-console.log('?? Sweet Cookie Shop loaded - Built by CodePilot AI!');
+  private generateDynamicREADME(plan: Plan, features: string[]): string {
+    return `# ${plan.name}
 
-// Sample cookie products data
-const products = [
-    {
-        id: 1,
-        name: "Chocolate Chip Classic",
-        price: 12.99,
-        description: "Our signature chocolate chip cookies made with premium Belgian chocolate chips and Madagascar vanilla.",
-        emoji: "??"
-    },
-    {
-        id: 2,
-        name: "Double Fudge Brownie",
-        price: 14.99,
-        description: "Rich, fudgy brownie cookies with chunks of dark chocolate and a chewy center.",
-        emoji: "??"
-    },
-    {
-        id: 3,
-        name: "Oatmeal Raisin Delight",
-        price: 11.99,
-        description: "Hearty oatmeal cookies packed with plump raisins and a hint of cinnamon.",
-        emoji: "??"
-    },
-    {
-        id: 4,
-        name: "Snickerdoodle Supreme",
-        price: 13.99,
-        description: "Soft, chewy cookies rolled in cinnamon sugar with a perfect crackled top.",
-        emoji: "?"
-    },
-    {
-        id: 5,
-        name: "Peanut Butter Paradise",
-        price: 13.49,
-        description: "Creamy peanut butter cookies with a soft center and distinctive cross-hatch pattern.",
-        emoji: "??"
-    },
-    {
-        id: 6,
-        name: "Sugar Cookie Sunshine",
-        price: 10.99,
-        description: "Classic sugar cookies with a tender crumb and sweet vanilla flavor, perfect for decorating.",
-        emoji: "??"
-    }
-];
+${plan.description}
 
-// Shopping cart
-let cart = [];
+## ?? Generated by CodePilot AI
 
-// Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
-    loadProducts();
-    updateCartCount();
-    setupEventListeners();
-    showWelcomeMessage();
-});
+This project was automatically generated using CodePilot AI technology on ${new Date().toLocaleDateString()}.
 
-// Show welcome message about AI generation
-function showWelcomeMessage() {
-    setTimeout(() => {
-        console.log('?? Welcome to Sweet Cookie Shop!');
-        console.log('?? This entire website was generated by CodePilot AI in seconds!');
-        console.log('? Features include: responsive design, shopping cart, product catalog, and more!');
-    }, 1000);
-}
+## ?? Project Details
 
-// Load products into the grid
-function loadProducts() {
-    const productGrid = document.getElementById('product-grid');
-    
-    products.forEach(product => {
-        const productCard = createProductCard(product);
-        productGrid.appendChild(productCard);
-    });
-}
+- **Type**: ${plan.type}
+- **Tech Stack**: ${plan.techStack.join(', ')}
+- **Project ID**: ${plan.id}
 
-// Create product card element
-function createProductCard(product) {
-    const card = document.createElement('div');
-    card.className = 'product-card';
-    
-    card.innerHTML = \`
-        <div class="product-image">
-            <span style="font-size: 3rem;">\${product.emoji}</span>
-        </div>
-        <h3>\${product.name}</h3>
-        <p>\${product.description}</p>
-        <div class="product-price">$\${product.price}</div>
-        <button class="add-to-cart" onclick="addToCart(\${product.id})">
-            <i class="fas fa-cart-plus"></i> Add to Cart
-        </button>
-    \`;
-    
-    return card;
-}
+## ? Features
 
-// Add product to cart
-function addToCart(productId) {
-    const product = products.find(p => p.id === productId);
-    if (product) {
-        const existingItem = cart.find(item => item.id === productId);
-        
-        if (existingItem) {
-            existingItem.quantity += 1;
-        } else {
-            cart.push({
-                ...product,
-                quantity: 1
-            });
-        }
-        
-        updateCartCount();
-        showAddToCartNotification(product.name);
-    }
-}
+${features.map(feature => `- ${feature.charAt(0).toUpperCase() + feature.slice(1)}`).join('\n')}
 
-// Update cart count in header
-function updateCartCount() {
-    const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
-    document.getElementById('cart-count').textContent = cartCount;
-}
+## ??? Getting Started
 
-// Show cart modal
-function showCart() {
-    const modal = document.getElementById('cart-modal');
-    const cartItems = document.getElementById('cart-items');
-    const cartTotal = document.getElementById('cart-total');
-    
-    // Clear previous items
-    cartItems.innerHTML = '';
-    
-    if (cart.length === 0) {
-        cartItems.innerHTML = '<p style="text-align: center; color: #666;">Your cart is empty</p>';
-        cartTotal.textContent = '0.00';
-    } else {
-        let total = 0;
-        
-        cart.forEach(item => {
-            const itemElement = document.createElement('div');
-            itemElement.className = 'cart-item';
-            itemElement.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #eee;';
-            
-            const itemTotal = item.price * item.quantity;
-            total += itemTotal;
-            
-            itemElement.innerHTML = \`
-                <div>
-                    <strong>\${item.name}</strong>
-                    <div style="color: #666; font-size: 0.9rem;">$\${item.price} each</div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <button onclick="updateQuantity(\${item.id}, -1)" style="background: #f0f0f0; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">-</button>
-                    <span>\${item.quantity}</span>
-                    <button onclick="updateQuantity(\${item.id}, 1)" style="background: #f0f0f0; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+</button>
-                    <span style="margin-left: 15px; font-weight: bold;">$\${itemTotal.toFixed(2)}</span>
-                    <button onclick="removeFromCart(\${item.id})" style="background: #ff4444; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-left: 10px;">×</button>
-                </div>
-            \`;
-            
-            cartItems.appendChild(itemElement);
-        });
-        
-        cartTotal.textContent = total.toFixed(2);
-    }
-    
-    modal.style.display = 'block';
-}
+### Prerequisites
 
-// Update item quantity in cart
-function updateQuantity(productId, change) {
-    const item = cart.find(item => item.id === productId);
-    if (item) {
-        item.quantity += change;
-        if (item.quantity <= 0) {
-            removeFromCart(productId);
-        } else {
-            updateCartCount();
-            showCart(); // Refresh cart display
-        }
-    }
-}
+- Node.js 18+ 
+- npm or yarn
 
-// Remove item from cart
-function removeFromCart(productId) {
-    cart = cart.filter(item => item.id !== productId);
-    updateCartCount();
-    showCart(); // Refresh cart display
-}
+### Installation
 
-// Close cart modal
-function closeCart() {
-    document.getElementById('cart-modal').style.display = 'none';
-}
-
-// Checkout function
-function checkout() {
-    if (cart.length === 0) {
-        alert('Your cart is empty!');
-        return;
-    }
-    
-    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    alert(\`?? Thank you for your order!\\n\\nTotal: $\${total.toFixed(2)}\\n\\n?? This website was generated by CodePilot AI!\\n\\nIn a real store, you would be redirected to payment processing.\`);
-    
-    // Clear cart
-    cart = [];
-    updateCartCount();
-    closeCart();
-}
-
-// Smooth scrolling to sections
-function scrollToSection(sectionId) {
-    const section = document.getElementById(sectionId);
-    if (section) {
-        section.scrollIntoView({ 
-            behavior: 'smooth',
-            block: 'start'
-        });
-    }
-}
-
-// Show add to cart notification
-function showAddToCartNotification(productName) {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.style.cssText = \`
-        position: fixed;
-        top: 100px;
-        right: 20px;
-        background: #4CAF50;
-        color: white;
-        padding: 15px 20px;
-        border-radius: 5px;
-        z-index: 3000;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        transform: translateX(100%);
-        transition: transform 0.3s ease;
-    \`;
-    
-    notification.innerHTML = \`
-        <i class="fas fa-check-circle"></i>
-        \${productName} added to cart!
-    \`;
-    
-    document.body.appendChild(notification);
-    
-    // Animate in
-    setTimeout(() => {
-        notification.style.transform = 'translateX(0)';
-    }, 100);
-    
-    // Remove after delay
-    setTimeout(() => {
-        notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            document.body.removeChild(notification);
-        }, 300);
-    }, 2000);
-}
-
-// Setup event listeners
-function setupEventListeners() {
-    // Modal close on outside click
-    document.getElementById('cart-modal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeCart();
-        }
-    });
-    
-    // Smooth scrolling for navigation links
-    document.querySelectorAll('.nav-links a[href^="#"]').forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            const targetId = this.getAttribute('href').substring(1);
-            scrollToSection(targetId);
-        });
-    });
-}
-
-// Add some dynamic effects
-window.addEventListener('scroll', function() {
-    const header = document.querySelector('.header');
-    if (window.scrollY > 100) {
-        header.style.background = 'linear-gradient(135deg, rgba(139, 69, 19, 0.95), rgba(210, 105, 30, 0.95))';
-    } else {
-        header.style.background = 'linear-gradient(135deg, #8B4513, #D2691E)';
-    }
-});
-
-// Initialize
-updateCartCount();
-
-// AI Generated message
-console.log('?? Sweet Cookie Shop fully loaded!');
-console.log('?? Generated by CodePilot AI - Your AI Application Builder');
-console.log('? Time to generate: <30 seconds');
-console.log('?? Features: Responsive design, shopping cart, product catalog, animations');`
-    };
-  }
-
-  private generatePackageJSON(): GeneratedFile {
-    return {
-      path: 'package.json',
-      type: 'json',
-      content: `{
-  "name": "sweet-cookie-shop",
-  "version": "1.0.0",
-  "description": "A beautiful cookie e-commerce website generated by CodePilot AI",
-  "main": "index.html",
-  "scripts": {
-    "start": "python -m http.server 8000",
-    "serve": "npx serve .",
-    "dev": "npx live-server"
-  },
-  "keywords": [
-    "cookies",
-    "ecommerce",
-    "website",
-    "sweet",
-    "bakery",
-    "codepilot",
-    "ai-generated"
-  ],
-  "author": "CodePilot AI",
-  "license": "MIT",
-  "devDependencies": {
-    "live-server": "^1.2.2",
-    "serve": "^14.2.0"
-  },
-  "codepilot": {
-    "generated": true,
-    "timestamp": "${new Date().toISOString()}",
-    "buildTime": "<30 seconds",
-    "features": [
-      "responsive design",
-      "shopping cart",
-      "product catalog",
-      "animations",
-      "professional styling"
-    ]
-  }
-}`
-    };
-  }
-
-  private generateREADME(): GeneratedFile {
-    return {
-      path: 'README.md',
-      type: 'md',
-      content: `# ?? Sweet Cookie Shop
-
-**?? Generated by CodePilot AI in under 30 seconds!**
-
-A beautiful, fully-functional cookie e-commerce website with shopping cart, responsive design, and professional styling.
-
-## ? AI Generation Details
-
-- **Generated by**: CodePilot AI
-- **Generation time**: ~30 seconds
-- **Features**: Complete e-commerce functionality
-- **Technologies**: HTML5, CSS3, JavaScript (ES6+)
-- **Responsive**: Works on desktop, tablet, and mobile
-
-## ?? Features
-
-? **Responsive Design** - Works perfectly on all devices
-?? **Shopping Cart** - Add items, update quantities, checkout
-?? **Product Catalog** - Beautiful cookie gallery with descriptions
-?? **Mobile Optimized** - Touch-friendly interface
-?? **Modern UI** - Clean, attractive design with smooth animations
-?? **AI Generated** - Complete website built by CodePilot AI
-? **Fast Loading** - Optimized for performance
-?? **Professional Code** - Clean, maintainable structure
-
-## ????? Quick Start
-
-### Option 1: Simple HTTP Server (Python)
-\`\`\`bash
-python -m http.server 8000
-\`\`\`
-Then visit: http://localhost:8000
-
-### Option 2: Using npm serve
-\`\`\`bash
-npm install
-npm run serve
-\`\`\`
-
-### Option 3: Live Server (with auto-reload)
 \`\`\`bash
 npm install
 npm run dev
 \`\`\`
 
-## ?? Cookie Products
+### Build for Production
 
-Our delicious selection includes:
+\`\`\`bash
+npm run build
+\`\`\`
 
-- **Chocolate Chip Classic** - $12.99
-- **Double Fudge Brownie** - $14.99  
-- **Oatmeal Raisin Delight** - $11.99
-- **Snickerdoodle Supreme** - $13.99
-- **Peanut Butter Paradise** - $13.49
-- **Sugar Cookie Sunshine** - $10.99
+## ?? Project Structure
+
+\`\`\`
+${plan.name.toLowerCase().replace(/\s+/g, '-')}/
++-- package.json
++-- index.html
++-- ${plan.techStack.includes('React') ? 'src/' : ''}
+${plan.techStack.includes('React') ? '¦   +-- App.tsx' : '+-- app.js'}
++-- styles.css
++-- README.md
+\`\`\`
+
+## ?? Customization
+
+This is a starter template. You can customize:
+
+- Colors and themes in \`styles.css\`
+- Components and functionality in the main app file
+- Dependencies in \`package.json\`
 
 ## ?? About CodePilot AI
 
-This website was automatically generated by **CodePilot AI**, demonstrating the power of AI-driven application development:
+CodePilot AI is an intelligent development platform that transforms natural language descriptions into working applications.
 
-- **? Instant Generation**: Complete websites in under 30 seconds
-- **?? Professional Quality**: Production-ready code and design
-- **?? Modern Technologies**: Responsive design and best practices
-- **?? Fully Functional**: Working shopping cart and product catalog
-- **?? Beautiful UI**: Professional styling and animations
+---
 
-## ?? Technical Features
-
-- ? **Fast Loading**: Optimized HTML, CSS, and JavaScript
-- ?? **Mobile-First**: Responsive design that works everywhere
-- ?? **Smooth Animations**: CSS transitions and hover effects
-- ?? **SEO-Optimized**: Semantic HTML structure
-- ? **Accessible**: ARIA labels and keyboard navigation
-- ??? **Secure**: No external dependencies for core functionality
-
-**Ready to build your own applications with CodePilot AI?** 
-
-Just describe what you want to build, and watch as CodePilot generates a complete, working application in seconds!
-
-*Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}*
-
-**?? CodePilot AI Features:**
-- Instant application generation
-- Professional code quality
-- Modern responsive design
-- Complete functionality
-- Production-ready deployment
-
-**Try it yourself!** ???`
-    };
+*Generated on ${new Date().toISOString()} with ?? by CodePilot AI*
+`;
   }
 }
 
-export const codeGenerator = new CodeGenerationService();
+export const codeGenerationService = new CodeGenerationService();

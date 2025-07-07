@@ -1,325 +1,204 @@
-import axios from "axios";
+import { v4 as uuidv4 } from 'uuid';
+import { AITeam } from './AITeam';
 
-export interface ProjectPlan {
+interface Plan {
   id: string;
-  title: string;
+  name: string;
   description: string;
+  type: string;
   techStack: string[];
-  features: ProjectFeature[];
-  estimatedTime: string;
-  visualPreview?: string;
+  files: string[];
   created: Date;
 }
 
-export interface ProjectFeature {
-  id: string;
-  title: string;
-  description: string;
-  priority: "high" | "medium" | "low";
-  estimatedHours: number;
-  dependencies: string[];
-  status: "pending" | "in-progress" | "completed";
+interface BuildResult {
+  projectId: string;
+  files: Array<{
+    name: string;
+    path: string;
+    content: string;
+    type: string;
+  }>;
 }
 
-export interface BuildRequest {
-  description: string;
-  requirements?: string[];
-  style?: "modern" | "classic" | "minimal" | "bold";
-  target?: "web" | "mobile" | "desktop";
-  userId?: string;
-}
-
-export class ApplicationBuilderService {
-  private apiKey: string;
+class ApplicationBuilderService {
+  private plans = new Map<string, Plan>();
+  private projects = new Map<string, BuildResult>();
+  private aiTeam: AITeam;
 
   constructor() {
-    this.apiKey = process.env.PERPLEXITY_API_KEY || "";
+    this.aiTeam = new AITeam();
+    console.log('ApplicationBuilderService initialized with AITeam integration');
   }
 
-  async generateProjectPlan(request: BuildRequest): Promise<ProjectPlan> {
-    console.log("??? Generating project plan for:", request.description);
-
+  async generatePlan(description: string): Promise<Plan> {
     try {
-      // Use AI to analyze the request and create a structured plan
-      const planningPrompt = this.createPlanningPrompt(request);
-      const aiResponse = await this.callAI(planningPrompt);
+      console.log('USING AI TEAM FOR PLAN GENERATION');
       
-      // Parse AI response into structured project plan
-      const plan = this.parseProjectPlan(aiResponse, request);
+      const planPrompt = 'Analyze this project: ' + description + '. Create a professional plan.';
+      const aiResponse = await this.aiTeam.routeQuery(planPrompt, 'Elite Coder Agent');
+      console.log('AI Response received for plan generation');
       
+      const plan: Plan = {
+        id: uuidv4(),
+        name: this.extractAIProjectName(aiResponse, description),
+        description: description.trim(),
+        type: this.detectProjectType(description),
+        techStack: this.getTechStack(this.detectProjectType(description)),
+        files: this.getProjectFiles(this.detectProjectType(description)),
+        created: new Date()
+      };
+
+      this.plans.set(plan.id, plan);
+      console.log('AI-enhanced plan created:', plan.name);
       return plan;
     } catch (error) {
-      console.error("? Project planning error:", error);
-      return this.generateFallbackPlan(request);
+      console.error('AI plan generation failed:', error);
+      return this.generateFallbackPlan(description);
     }
   }
 
-  private createPlanningPrompt(request: BuildRequest): string {
-    return `You are an expert software architect and project planner. 
-
-Analyze this application request and create a detailed project plan:
-"${request.description}"
-
-Additional requirements: ${request.requirements?.join(", ") || "None specified"}
-Style preference: ${request.style || "modern"}
-Target platform: ${request.target || "web"}
-
-Provide a structured response with:
-
-1. PROJECT OVERVIEW:
-   - Application name (creative, relevant)
-   - Brief description
-   - Target users
-   - Core value proposition
-
-2. TECHNICAL STACK:
-   - Frontend framework (React, Vue, etc.)
-   - Backend technology (Node.js, Python, etc.)
-   - Database choice
-   - Key libraries/tools
-
-3. FEATURE BREAKDOWN:
-   - List 6-8 core features
-   - For each feature: title, description, priority (high/medium/low), estimated hours
-   - Include both MVP and future features
-
-4. IMPLEMENTATION PHASES:
-   - Phase 1: Core functionality (MVP)
-   - Phase 2: Enhanced features
-   - Phase 3: Advanced capabilities
-
-5. VISUAL DESCRIPTION:
-   - Color scheme suggestions
-   - Layout description
-   - Key UI components
-   - User experience flow
-
-Focus on practical, implementable solutions that can be built with modern web technologies.`;
-  }
-
-  private async callAI(prompt: string): Promise<string> {
-    if (!this.apiKey) {
-      throw new Error("AI API key not configured");
-    }
-
-    const response = await axios.post(
-      "https://api.perplexity.ai/chat/completions",
-      {
-        model: "llama-3.1-sonar-large-128k-online",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert software architect who creates detailed, implementable project plans."
-          },
-          {
-            role: "user", 
-            content: prompt
-          }
-        ],
-        max_tokens: 2000,
-        temperature: 0.2
-      },
-      {
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json"
-        }
+  async buildProject(planId: string): Promise<BuildResult> {
+    try {
+      const plan = this.plans.get(planId);
+      if (!plan) {
+        throw new Error('Plan not found: ' + planId);
       }
-    );
 
-    return response.data.choices[0].message.content;
-  }
+      console.log('USING AI TEAM FOR CODE GENERATION');
+      const files = await this.generateAIFiles(plan);
 
-  private parseProjectPlan(aiResponse: string, request: BuildRequest): ProjectPlan {
-    // Parse the AI response into structured data
-    const plan: ProjectPlan = {
-      id: `proj_${Date.now()}`,
-      title: this.extractTitle(aiResponse) || this.generateTitleFromRequest(request.description),
-      description: this.extractDescription(aiResponse) || request.description,
-      techStack: this.extractTechStack(aiResponse),
-      features: this.extractFeatures(aiResponse),
-      estimatedTime: this.calculateEstimatedTime(aiResponse),
-      created: new Date()
-    };
+      const result: BuildResult = {
+        projectId: 'proj_' + Date.now(),
+        files
+      };
 
-    return plan;
-  }
-
-  private generateFallbackPlan(request: BuildRequest): ProjectPlan {
-    // Intelligent fallback when AI is unavailable
-    const appType = this.detectApplicationType(request.description);
-    
-    return {
-      id: `proj_${Date.now()}`,
-      title: this.generateTitleFromRequest(request.description),
-      description: `A ${request.target || "web"} application: ${request.description}`,
-      techStack: this.getDefaultTechStack(appType, request.target),
-      features: this.generateDefaultFeatures(appType),
-      estimatedTime: "2-4 weeks",
-      created: new Date()
-    };
-  }
-
-  private detectApplicationType(description: string): string {
-    const lowerDesc = description.toLowerCase();
-    
-    if (lowerDesc.includes("e-commerce") || lowerDesc.includes("store") || lowerDesc.includes("shop") || lowerDesc.includes("sell")) {
-      return "ecommerce";
-    } else if (lowerDesc.includes("blog") || lowerDesc.includes("content") || lowerDesc.includes("news")) {
-      return "content";
-    } else if (lowerDesc.includes("dashboard") || lowerDesc.includes("admin") || lowerDesc.includes("analytics")) {
-      return "dashboard";
-    } else if (lowerDesc.includes("social") || lowerDesc.includes("chat") || lowerDesc.includes("community")) {
-      return "social";
-    } else if (lowerDesc.includes("portfolio") || lowerDesc.includes("showcase")) {
-      return "portfolio";
-    }
-    
-    return "general";
-  }
-
-  private getDefaultTechStack(appType: string, target?: string): string[] {
-    const baseTech = ["React", "TypeScript", "Tailwind CSS"];
-    
-    switch (appType) {
-      case "ecommerce":
-        return [...baseTech, "Next.js", "Stripe", "PostgreSQL", "Prisma"];
-      case "dashboard":
-        return [...baseTech, "Chart.js", "Express.js", "PostgreSQL", "Redis"];
-      case "social":
-        return [...baseTech, "Socket.io", "Express.js", "PostgreSQL", "Redis"];
-      default:
-        return [...baseTech, "Next.js", "Express.js"];
+      this.projects.set(result.projectId, result);
+      console.log('AI-powered build completed:', result.projectId);
+      return result;
+    } catch (error) {
+      console.error('AI build failed:', error);
+      throw error;
     }
   }
 
-  private generateDefaultFeatures(appType: string): ProjectFeature[] {
-    const commonFeatures = [
-      {
-        id: "auth",
-        title: "User Authentication",
-        description: "Secure user registration, login, and profile management",
-        priority: "high" as const,
-        estimatedHours: 8,
-        dependencies: [],
-        status: "pending" as const
-      },
-      {
-        id: "responsive",
-        title: "Responsive Design",
-        description: "Mobile-first responsive design that works on all devices",
-        priority: "high" as const,
-        estimatedHours: 6,
-        dependencies: [],
-        status: "pending" as const
+  private async generateAIFiles(plan: Plan) {
+    const files = [];
+    try {
+      const packageContent = await this.aiTeam.routeQuery('Generate package.json for ' + plan.name, 'System Architect Agent');
+      files.push({
+        name: 'package.json',
+        path: 'package.json',
+        content: this.cleanResponse(packageContent),
+        type: 'json'
+      });
+
+      const appContent = await this.aiTeam.routeQuery('Create React component for ' + plan.name, 'Elite Coder Agent');
+      files.push({
+        name: 'App.tsx',
+        path: 'src/App.tsx',
+        content: this.cleanResponse(appContent),
+        type: 'tsx'
+      });
+
+      return files;
+    } catch (error) {
+      console.error('AI file generation failed:', error);
+      return this.generateBasicFiles(plan);
+    }
+  }
+
+  private cleanResponse(response: string): string {
+    let cleaned = response;
+    const codeBlockMarker = '```';
+    if (cleaned.indexOf(codeBlockMarker) !== -1) {
+      const parts = cleaned.split(codeBlockMarker);
+      if (parts.length >= 3) {
+        cleaned = parts[1];
       }
+    }
+    return cleaned.trim();
+  }
+
+  private extractAIProjectName(aiResponse: string, description: string): string {
+    // Try to extract project name from AI response
+    const namePatterns = [
+      /project\s+named?\s+["']([^"']+)["']/i,
+      /call\s+it\s+["']([^"']+)["']/i,
+      /name:\s*["']([^"']+)["']/i,
+      /title:\s*["']([^"']+)["']/i
     ];
+    
+    for (const pattern of namePatterns) {
+      const match = aiResponse.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    // Fallback to intelligent naming based on description
+    return this.generateIntelligentName(description);
+  }
+  private generateIntelligentName(description: string): string {
+    const lower = description.toLowerCase();
+    if (lower.indexOf('task') !== -1) return 'TaskMaster Pro';
+    if (lower.indexOf('crypto') !== -1) return 'CryptoTracker Pro';
+    if (lower.indexOf('drone') !== -1) return 'DroneStore Pro';
+    return 'SmartApp Pro';
+  }
 
+  private detectProjectType(description: string): string {
+    const lower = description.toLowerCase();
+    if (lower.indexOf('task') !== -1 || lower.indexOf('manage') !== -1) return 'productivity';
+    if (lower.indexOf('crypto') !== -1) return 'dashboard';
+    if (lower.indexOf('store') !== -1) return 'ecommerce';
+    return 'application';
+  }
+
+  private getTechStack(appType: string): string[] {
+    const base = ['React', 'TypeScript', 'Tailwind CSS', 'Vite'];
     switch (appType) {
-      case "ecommerce":
-        return [
-          ...commonFeatures,
-          {
-            id: "products",
-            title: "Product Catalog",
-            description: "Browse and search products with detailed views",
-            priority: "high" as const,
-            estimatedHours: 12,
-            dependencies: [],
-            status: "pending" as const
-          },
-          {
-            id: "cart",
-            title: "Shopping Cart",
-            description: "Add items to cart and manage quantities",
-            priority: "high" as const,
-            estimatedHours: 8,
-            dependencies: ["products"],
-            status: "pending" as const
-          },
-          {
-            id: "checkout",
-            title: "Secure Checkout",
-            description: "Payment processing with Stripe integration",
-            priority: "high" as const,
-            estimatedHours: 10,
-            dependencies: ["cart", "auth"],
-            status: "pending" as const
-          }
-        ];
-      
-      default:
-        return [
-          ...commonFeatures,
-          {
-            id: "core",
-            title: "Core Functionality",
-            description: "Main application features and user interface",
-            priority: "high" as const,
-            estimatedHours: 16,
-            dependencies: [],
-            status: "pending" as const
-          }
-        ];
+      case 'productivity': return base.concat(['React DnD', 'Zustand']);
+      case 'dashboard': return base.concat(['Chart.js', 'D3.js']);
+      case 'ecommerce': return base.concat(['Stripe', 'Express']);
+      default: return base;
     }
   }
 
-  private generateTitleFromRequest(description: string): string {
-    // Generate creative app names based on description
-    const words = description.toLowerCase().split(" ");
-    
-    if (words.includes("store") || words.includes("shop")) {
-      return words.includes("surfboard") ? "SurfBoard Bazaar" : "ShopMaster Pro";
-    } else if (words.includes("dashboard")) {
-      return "DataHub Pro";
-    } else if (words.includes("blog")) {
-      return "ContentCraft";
-    } else if (words.includes("website")) {
-      return "WebCraft Pro";
-    }
-    
-    return "CustomApp Builder";
+  private getProjectFiles(appType: string): string[] {
+    return ['package.json', 'src/App.tsx', 'index.html'];
   }
 
-  private extractTitle(response: string): string | null {
-    // Extract application name from AI response
-    const titleMatch = response.match(/Application name[:\s]*([^\n]+)/i);
-    return titleMatch ? titleMatch[1].trim() : null;
+  private generateFallbackPlan(description: string): Plan {
+    return {
+      id: uuidv4(),
+      name: this.extractAIProjectName(aiResponse, description),
+      description: description.trim(),
+      type: this.detectProjectType(description),
+      techStack: this.getTechStack(this.detectProjectType(description)),
+      files: this.getProjectFiles(this.detectProjectType(description)),
+      created: new Date()
+    };
   }
 
-  private extractDescription(response: string): string | null {
-    // Extract description from AI response
-    const descMatch = response.match(/Brief description[:\s]*([^\n]+)/i);
-    return descMatch ? descMatch[1].trim() : null;
+  private generateBasicFiles(plan: Plan) {
+    return [{
+      name: 'package.json',
+      path: 'package.json',
+      content: JSON.stringify({ name: plan.name, version: '1.0.0' }, null, 2),
+      type: 'json'
+    }];
   }
 
-  private extractTechStack(response: string): string[] {
-    // Extract tech stack from AI response
-    const techSection = response.match(/TECHNICAL STACK:(.*?)(?=\d\.|$)/s);
-    if (!techSection) return ["React", "TypeScript", "Tailwind CSS"];
-    
-    const technologies = techSection[1]
-      .split(/[-•\n]/)
-      .map(item => item.trim())
-      .filter(item => item && !item.includes(":"))
-      .slice(0, 6);
-    
-    return technologies.length > 0 ? technologies : ["React", "TypeScript", "Tailwind CSS"];
+  async getProject(projectId: string): Promise<BuildResult | null> {
+    return this.projects.get(projectId) || null;
   }
 
-  private extractFeatures(response: string): ProjectFeature[] {
-    // Extract features from AI response
-    const featureSection = response.match(/FEATURE BREAKDOWN:(.*?)(?=\d\.|$)/s);
-    if (!featureSection) return this.generateDefaultFeatures("general");
-    
-    // Parse features from AI response (simplified for now)
-    return this.generateDefaultFeatures("general");
-  }
-
-  private calculateEstimatedTime(response: string): string {
-    // Calculate total time based on features
-    return "2-4 weeks";
+  async listProjects(): Promise<BuildResult[]> {
+    return Array.from(this.projects.values());
   }
 }
 
-export const applicationBuilder = new ApplicationBuilderService();
+export const applicationBuilderService = new ApplicationBuilderService();
+
+

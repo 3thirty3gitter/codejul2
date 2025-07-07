@@ -1,511 +1,252 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from "react";
 
-interface FileNode {
+interface File {
   id: string;
   name: string;
   type: 'file' | 'folder';
-  path: string;
   content?: string;
-  children?: FileNode[];
-  isOpen?: boolean;
-  isSelected?: boolean;
-  lastModified: Date;
-  size?: number;
+  children?: File[];
 }
 
 interface FileExplorerProps {
-  onFileSelect: (file: FileNode) => void;
-  onFileCreate: (file: FileNode) => void;
-  onFileDelete: (fileId: string) => void;
-  onFileRename: (fileId: string, newName: string) => void;
-  selectedFileId?: string;
+  collapsed?: boolean;
+  onToggle?: () => void;
+  files?: File[];  // Make files optional with default
+  selectedFileId?: string | null;
+  onFileSelect?: (file: File) => void;
+  onFileCreate?: (file: File) => void;
+  onFileDelete?: (fileId: string) => void;
+  onFileRename?: (fileId: string, newName: string) => void;
 }
 
-export default function FileExplorer({ 
-  onFileSelect, 
-  onFileCreate, 
-  onFileDelete, 
-  onFileRename,
-  selectedFileId 
+export default function FileExplorer({
+  collapsed = false,
+  onToggle,
+  files = [], // Default to empty array
+  selectedFileId = null,
+  onFileSelect,
+  onFileCreate,
+  onFileDelete,
+  onFileRename
 }: FileExplorerProps) {
-  const [fileTree, setFileTree] = useState<FileNode[]>([
-    {
-      id: 'src',
-      name: 'src',
-      type: 'folder',
-      path: 'src',
-      isOpen: true,
-      lastModified: new Date(),
-      children: [
-        {
-          id: 'app-tsx',
-          name: 'App.tsx',
-          type: 'file',
-          path: 'src/App.tsx',
-          lastModified: new Date(),
-          size: 1247,
-          content: `import React from 'react';
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
+  const [newFileType, setNewFileType] = useState<'file' | 'folder'>('file');
 
-function App() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-xl p-8 max-w-md text-center">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">
-          ?? Welcome to CodePilot!
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Your AI-powered development workspace is ready!
-        </p>
-        <button 
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors"
-          onClick={() => alert('Hello from CodePilot!')}
+  // Safe array access with fallback
+  const safeFiles = Array.isArray(files) ? files : [];
+
+  const handleCreateFile = () => {
+    if (newFileName.trim() && onFileCreate) {
+      const newFile: File = {
+        id: Date.now().toString(),
+        name: newFileName.trim(),
+        type: newFileType,
+        content: newFileType === 'file' ? '' : undefined,
+        children: newFileType === 'folder' ? [] : undefined
+      };
+      onFileCreate(newFile);
+      setNewFileName('');
+      setShowCreateModal(false);
+    }
+  };
+
+  const FileItem = ({ file }: { file: File }) => (
+    <div 
+      key={file.id}
+      onClick={() => file.type === 'file' && onFileSelect?.(file)}
+      style={{
+        padding: '0.5rem',
+        cursor: file.type === 'file' ? 'pointer' : 'default',
+        background: selectedFileId === file.id ? '#007acc' : 'transparent',
+        color: selectedFileId === file.id ? 'white' : '#cccccc',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        fontSize: '0.9rem'
+      }}
+    >
+      <span>{file.type === 'folder' ? '??' : '??'}</span>
+      <span style={{ flex: 1 }}>{file.name}</span>
+      {file.type === 'file' && onFileDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onFileDelete(file.id);
+          }}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#ff6b6b',
+            cursor: 'pointer',
+            fontSize: '0.8rem'
+          }}
         >
-          Get Started
+          ???
         </button>
-      </div>
+      )}
     </div>
   );
-}
-
-export default App;`
-        },
-        {
-          id: 'components',
-          name: 'components',
-          type: 'folder',
-          path: 'src/components',
-          isOpen: true,
-          lastModified: new Date(),
-          children: [
-            {
-              id: 'header-tsx',
-              name: 'Header.tsx',
-              type: 'file',
-              path: 'src/components/Header.tsx',
-              lastModified: new Date(),
-              size: 856,
-              content: `import React from 'react';
-
-interface HeaderProps {
-  title: string;
-  subtitle?: string;
-}
-
-export default function Header({ title, subtitle }: HeaderProps) {
-  return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-6">
-          <div className="flex items-center">
-            <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
-            {subtitle && (
-              <span className="ml-3 text-lg text-gray-600">{subtitle}</span>
-            )}
-          </div>
-        </div>
-      </div>
-    </header>
-  );
-}`
-            }
-          ]
-        }
-      ]
-    },
-    {
-      id: 'package-json',
-      name: 'package.json',
-      type: 'file',
-      path: 'package.json',
-      lastModified: new Date(),
-      size: 892,
-      content: `{
-  "name": "codepilot-workspace",
-  "version": "1.0.0",
-  "description": "Professional AI-powered development workspace",
-  "main": "index.js",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
-  },
-  "devDependencies": {
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "typescript": "^5.2.2",
-    "vite": "^5.3.4"
-  }
-}`
-    }
-  ]);
-
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    targetId: string;
-    targetType: 'file' | 'folder';
-  } | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => setContextMenu(null);
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
-  const findNodeById = (nodes: FileNode[], id: string): FileNode | null => {
-    for (const node of nodes) {
-      if (node.id === id) return node;
-      if (node.children) {
-        const found = findNodeById(node.children, id);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-
-  const updateNodeInTree = (nodes: FileNode[], id: string, updates: Partial<FileNode>): FileNode[] => {
-    return nodes.map(node => {
-      if (node.id === id) {
-        return { ...node, ...updates };
-      }
-      if (node.children) {
-        return {
-          ...node,
-          children: updateNodeInTree(node.children, id, updates)
-        };
-      }
-      return node;
-    });
-  };
-
-  const removeNodeFromTree = (nodes: FileNode[], id: string): FileNode[] => {
-    return nodes.filter(node => {
-      if (node.id === id) return false;
-      if (node.children) {
-        node.children = removeNodeFromTree(node.children, id);
-      }
-      return true;
-    });
-  };
-
-  const addNodeToTree = (nodes: FileNode[], parentId: string, newNode: FileNode): FileNode[] => {
-    return nodes.map(node => {
-      if (node.id === parentId && node.type === 'folder') {
-        const updatedChildren = [...(node.children || []), newNode];
-        return {
-          ...node,
-          children: updatedChildren,
-          isOpen: true
-        };
-      }
-      if (node.children) {
-        return {
-          ...node,
-          children: addNodeToTree(node.children, parentId, newNode)
-        };
-      }
-      return node;
-    });
-  };
-
-  const toggleFolder = (folderId: string) => {
-    setFileTree(prev => updateNodeInTree(prev, folderId, { 
-      isOpen: !findNodeById(prev, folderId)?.isOpen 
-    }));
-  };
-
-  const handleFileClick = (file: FileNode) => {
-    if (file.type === 'folder') {
-      toggleFolder(file.id);
-    } else {
-      onFileSelect(file);
-    }
-  };
-
-  const handleRightClick = (e: React.MouseEvent, node: FileNode) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      targetId: node.id,
-      targetType: node.type
-    });
-  };
-
-  const handleContextMenuAction = (action: string) => {
-    if (!contextMenu) return;
-
-    switch (action) {
-      case 'rename':
-        const node = findNodeById(fileTree, contextMenu.targetId);
-        if (node) {
-          setEditingId(node.id);
-          setEditingName(node.name);
-        }
-        break;
-      case 'delete':
-        if (confirm('Are you sure you want to delete this item?')) {
-          setFileTree(prev => removeNodeFromTree(prev, contextMenu.targetId));
-          onFileDelete(contextMenu.targetId);
-        }
-        break;
-      case 'new-file':
-        createNewFile(contextMenu.targetId);
-        break;
-      case 'new-folder':
-        createNewFolder(contextMenu.targetId);
-        break;
-    }
-    setContextMenu(null);
-  };
-
-  const createNewFile = (parentId?: string) => {
-    const fileName = prompt('Enter file name:');
-    if (!fileName) return;
-
-    const newFile: FileNode = {
-      id: crypto.randomUUID(),
-      name: fileName,
-      type: 'file',
-      path: parentId ? `${findNodeById(fileTree, parentId)?.path}/${fileName}` : fileName,
-      content: getTemplateContent(fileName),
-      lastModified: new Date(),
-      size: 0
-    };
-
-    if (parentId) {
-      setFileTree(prev => addNodeToTree(prev, parentId, newFile));
-    } else {
-      setFileTree(prev => [...prev, newFile]);
-    }
-
-    onFileCreate(newFile);
-  };
-
-  const createNewFolder = (parentId?: string) => {
-    const folderName = prompt('Enter folder name:');
-    if (!folderName) return;
-
-    const newFolder: FileNode = {
-      id: crypto.randomUUID(),
-      name: folderName,
-      type: 'folder',
-      path: parentId ? `${findNodeById(fileTree, parentId)?.path}/${folderName}` : folderName,
-      children: [],
-      isOpen: false,
-      lastModified: new Date()
-    };
-
-    if (parentId) {
-      setFileTree(prev => addNodeToTree(prev, parentId, newFolder));
-    } else {
-      setFileTree(prev => [...prev, newFolder]);
-    }
-  };
-
-  const handleRename = () => {
-    if (!editingId || !editingName.trim()) return;
-
-    const node = findNodeById(fileTree, editingId);
-    if (!node) return;
-
-    const newPath = node.path.replace(node.name, editingName);
-    setFileTree(prev => updateNodeInTree(prev, editingId, { 
-      name: editingName,
-      path: newPath,
-      lastModified: new Date()
-    }));
-
-    onFileRename(editingId, editingName);
-    setEditingId(null);
-    setEditingName('');
-  };
-
-  const getTemplateContent = (fileName: string): string => {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-    
-    const templates: Record<string, string> = {
-      'tsx': `import React from 'react';
-
-export default function ${fileName.replace('.tsx', '')}() {
-  return (
-    <div>
-      <h1>${fileName.replace('.tsx', '')} Component</h1>
-    </div>
-  );
-}`,
-      'ts': `// ${fileName}
-
-export const example = () => {
-  console.log('Hello from ${fileName}');
-};`,
-      'css': `/* ${fileName} */
-
-.container {
-  /* Add styles here */
-}`,
-      'html': `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
-</head>
-<body>
-  <h1>Hello World</h1>
-</body>
-</html>`
-    };
-
-    return templates[extension] || `// ${fileName}\n// New file created in CodePilot`;
-  };
-
-  const getFileIcon = (node: FileNode): string => {
-    if (node.type === 'folder') {
-      return node.isOpen ? '??' : '??';
-    }
-    
-    const extension = node.name.split('.').pop()?.toLowerCase();
-    const icons: Record<string, string> = {
-      'tsx': '??',
-      'ts': '??',
-      'js': '??',
-      'jsx': '??',
-      'css': '??',
-      'html': '??',
-      'json': '??',
-      'md': '??'
-    };
-    
-    return icons[extension] || '??';
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  const renderFileNode = (node: FileNode, depth: number = 0): React.ReactNode => {
-    const isSelected = node.id === selectedFileId;
-    const paddingLeft = depth * 20 + 8;
-
-    return (
-      <div key={node.id}>
-        <div
-          className={`flex items-center py-1 px-2 cursor-pointer hover:bg-gray-100 ${
-            isSelected ? 'bg-blue-100 border-r-2 border-blue-500' : ''
-          }`}
-          style={{ paddingLeft }}
-          onClick={() => handleFileClick(node)}
-          onContextMenu={(e) => handleRightClick(e, node)}
-        >
-          <span className="mr-2 text-sm">{getFileIcon(node)}</span>
-          {editingId === node.id ? (
-            <input
-              type="text"
-              value={editingName}
-              onChange={(e) => setEditingName(e.target.value)}
-              onBlur={handleRename}
-              onKeyPress={(e) => e.key === 'Enter' && handleRename()}
-              className="flex-1 text-sm bg-white border border-blue-500 rounded px-1"
-              autoFocus
-            />
-          ) : (
-            <span className={`text-sm flex-1 ${isSelected ? 'font-semibold text-blue-700' : 'text-gray-700'}`}>
-              {node.name}
-            </span>
-          )}
-          {node.type === 'file' && node.size !== undefined && (
-            <span className="text-xs text-gray-400 ml-2">
-              {formatFileSize(node.size)}
-            </span>
-          )}
-        </div>
-        {node.type === 'folder' && node.isOpen && node.children && (
-          <div>
-            {node.children.map(child => renderFileNode(child, depth + 1))}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   return (
-    <div className="h-full flex flex-col bg-white border-r border-gray-200">
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#252526'
+    }}>
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50">
-        <h3 className="font-semibold text-gray-800">Files</h3>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => createNewFile()}
-            className="p-1 hover:bg-gray-200 rounded"
-            title="New File"
-          >
-            ??
-          </button>
-          <button
-            onClick={() => createNewFolder()}
-            className="p-1 hover:bg-gray-200 rounded"
-            title="New Folder"
-          >
-            ??
-          </button>
+      <div style={{
+        padding: '0.75rem',
+        borderBottom: '1px solid #454545',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#cccccc' }}>
+          ?? Files ({safeFiles.length})
+        </span>
+        <div style={{ display: 'flex', gap: '0.25rem' }}>
+          {onFileCreate && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#007acc',
+                cursor: 'pointer',
+                fontSize: '0.8rem'
+              }}
+            >
+              ?
+            </button>
+          )}
+          {onToggle && (
+            <button
+              onClick={onToggle}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#cccccc',
+                cursor: 'pointer',
+                fontSize: '0.8rem'
+              }}
+            >
+              {collapsed ? '?' : '?'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* File Tree */}
-      <div className="flex-1 overflow-y-auto">
-        {fileTree.map(node => renderFileNode(node))}
-      </div>
-
-      {/* Context Menu */}
-      {contextMenu && (
-        <div
-          className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          {contextMenu.targetType === 'folder' && (
-            <>
-              <button
-                onClick={() => handleContextMenuAction('new-file')}
-                className="w-full text-left px-3 py-1 hover:bg-gray-100 text-sm"
-              >
-                ?? New File
-              </button>
-              <button
-                onClick={() => handleContextMenuAction('new-folder')}
-                className="w-full text-left px-3 py-1 hover:bg-gray-100 text-sm"
-              >
-                ?? New Folder
-              </button>
-              <hr className="my-1" />
-            </>
+      {/* File List */}
+      {!collapsed && (
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          {safeFiles.length === 0 ? (
+            <div style={{
+              padding: '1rem',
+              color: '#888',
+              fontSize: '0.9rem',
+              textAlign: 'center'
+            }}>
+              No files yet. Click ? to create one.
+            </div>
+          ) : (
+            safeFiles.map(file => <FileItem key={file.id} file={file} />)
           )}
-          <button
-            onClick={() => handleContextMenuAction('rename')}
-            className="w-full text-left px-3 py-1 hover:bg-gray-100 text-sm"
-          >
-            ?? Rename
-          </button>
-          <hr className="my-1" />
-          <button
-            onClick={() => handleContextMenuAction('delete')}
-            className="w-full text-left px-3 py-1 hover:bg-gray-100 text-sm text-red-600"
-          >
-            ??? Delete
-          </button>
+        </div>
+      )}
+
+      {/* Create File Modal */}
+      {showCreateModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d30',
+            padding: '1rem',
+            borderRadius: '8px',
+            minWidth: '300px'
+          }}>
+            <h3 style={{ margin: '0 0 1rem 0', color: 'white' }}>Create New</h3>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ color: '#cccccc', display: 'block', marginBottom: '0.5rem' }}>
+                Type:
+              </label>
+              <select
+                value={newFileType}
+                onChange={(e) => setNewFileType(e.target.value as 'file' | 'folder')}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  background: '#1e1e1e',
+                  border: '1px solid #454545',
+                  color: 'white'
+                }}
+              >
+                <option value="file">File</option>
+                <option value="folder">Folder</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ color: '#cccccc', display: 'block', marginBottom: '0.5rem' }}>
+                Name:
+              </label>
+              <input
+                type="text"
+                value={newFileName}
+                onChange={(e) => setNewFileName(e.target.value)}
+                placeholder={newFileType === 'file' ? 'index.tsx' : 'components'}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  background: '#1e1e1e',
+                  border: '1px solid #454545',
+                  color: 'white'
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreateFile()}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #454545',
+                  color: '#cccccc',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateFile}
+                style={{
+                  background: '#007acc',
+                  border: 'none',
+                  color: 'white',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

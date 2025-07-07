@@ -412,7 +412,7 @@ export default function WorkspaceLayout({ children }) {
                 style={{ width: `${100 - chatWidth - 1}%` }}
               >
                 <LivePreview 
-                  files={currentFiles}
+                  files={currentFiles || []}
                   selectedFileId={selectedFileId}
                 />
               </section>
@@ -426,7 +426,7 @@ export default function WorkspaceLayout({ children }) {
         isCollapsed={codeEditorCollapsed}
         onToggleCollapse={() => setCodeEditorCollapsed(!codeEditorCollapsed)}
         onRunCode={handleRunCode}
-        files={currentFiles}
+        files={currentFiles || []}
         selectedFileId={selectedFileId}
         onFileSelect={setSelectedFileId}
         onFileUpdate={(fileId, content) => {
@@ -462,4 +462,5 @@ export default function WorkspaceLayout({ children }) {
     </div>
   );
 }
+
 

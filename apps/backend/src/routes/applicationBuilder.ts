@@ -1,82 +1,80 @@
-import { Router } from "express";
-import { applicationBuilder } from "../services/applicationBuilderService";
-import { codeGenerator } from "../services/codeGenerationService";
+import { Router, Request, Response } from 'express';
+import { applicationBuilderService } from '../services/applicationBuilderService';
 
 const router = Router();
 
-// Generate project plan from description
-router.post("/plan", async (req, res) => {
+// Generate plan endpoint with comprehensive error handling
+router.post('/generate-plan', async (req: Request, res: Response) => {
   try {
-    const { description, requirements, style, target, userId } = req.body;
+    console.log('?? Generate plan request received');
+    console.log('?? Request body:', req.body);
+    console.log('?? Body type:', typeof req.body);
+    console.log('?? Body keys:', Object.keys(req.body || {}));
     
-    console.log("??? Building project plan for:", description);
-    
-    if (!description) {
-      return res.status(400).json({ error: "Description is required" });
+    // Check if body exists and has description
+    if (!req.body) {
+      console.error('? Request body is undefined');
+      return res.status(400).json({
+        error: 'Request body is missing',
+        message: 'Make sure Content-Type is application/json'
+      });
     }
 
-    const buildRequest = {
-      description,
-      requirements,
-      style,
-      target,
-      userId
-    };
+    const { description } = req.body;
+    
+    if (!description) {
+      console.error('? Description field missing from body:', req.body);
+      return res.status(400).json({
+        error: 'Description is required',
+        message: 'Request body must contain a description field',
+        received: req.body
+      });
+    }
 
-    const plan = await applicationBuilder.generateProjectPlan(buildRequest);
+    if (typeof description !== 'string') {
+      return res.status(400).json({
+        error: 'Description must be a string',
+        received: typeof description
+      });
+    }
+
+    console.log('?? Generating plan for:', description);
     
-    console.log("? Project plan generated:", plan.title);
+    const plan = await applicationBuilderService.generatePlan(description);
     
-    res.json({
-      success: true,
-      plan,
-      message: "Project plan generated successfully"
-    });
-  } catch (error: any) {
-    console.error("? Application builder error:", error);
-    res.status(500).json({ 
-      error: "Application planning failed", 
-      details: error.message 
+    console.log('? Plan generated successfully:', plan.name);
+    res.json(plan);
+  } catch (error) {
+    console.error('? Plan generation error:', error);
+    res.status(500).json({
+      error: 'Failed to generate plan',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// Start building project (generate code)
-router.post("/build/:planId", async (req, res) => {
+// Build project endpoint
+router.post('/build', async (req: Request, res: Response) => {
   try {
-    const { planId } = req.params;
+    const { planId } = req.body;
     
-    console.log("?? Starting build for plan:", planId);
-    
-    // Actually generate the application code
-    console.log("?? Generating cookie website...");
-    const buildResult = await codeGenerator.generateCookieWebsite(planId);
-    
-    console.log("?? Build result:", buildResult);
-    
-    if (buildResult.status === 'completed') {
-      res.json({
-        success: true,
-        message: "Application built successfully!",
-        buildId: buildResult.buildId,
-        status: buildResult.status,
-        projectPath: buildResult.projectPath,
-        files: buildResult.files.map(f => ({ path: f.path, type: f.type }))
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        message: "Build failed",
-        buildId: buildResult.buildId,
-        status: buildResult.status,
-        error: buildResult.error
+    if (!planId || typeof planId !== 'string') {
+      return res.status(400).json({
+        error: 'Plan ID is required and must be a string'
       });
     }
-  } catch (error: any) {
-    console.error("? Build start error:", error);
-    res.status(500).json({ 
-      error: "Build failed to start", 
-      details: error.message 
+
+    console.log('?? Building project for plan:', planId);
+    
+    const result = await applicationBuilderService.buildProject(planId);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('? Build error:', error);
+    res.status(500).json({
+      error: 'Failed to build project',
+      message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
