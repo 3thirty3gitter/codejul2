@@ -4,10 +4,10 @@ import { AITeam } from '../services/AITeam';
 const router = Router();
 const aiTeam = new AITeam();
 
-// Memory-enabled AI chat endpoint
+// Main AI chat endpoint
 router.post('/chat', async (req: Request, res: Response) => {
   try {
-    const { message, agent, sessionId, userId, projectId, context } = req.body;
+    const { message, agent } = req.body;
     
     if (!message || typeof message !== 'string') {
       return res.status(400).json({
@@ -15,19 +15,19 @@ router.post('/chat', async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`?? AI Chat request with memory: ${message.substring(0, 100)}...`);
+    console.log(`?? AI Chat request: ${message.substring(0, 100)}...`);
     
     // Get or create session
-    let currentSessionId = sessionId;
-    if (!currentSessionId) {
-      currentSessionId = aiTeam.createSession(userId, projectId);
+    let sessionId = req.body.sessionId;
+    if (!sessionId) {
+      sessionId = aiTeam.createSession(req.body.userId, req.body.projectId);
     }
     
     const result = await aiTeam.routeQueryWithMemory(
       message, 
-      currentSessionId, 
+      sessionId, 
       agent,
-      context || {}
+      req.body.context || {}
     );
     
     res.json({
@@ -45,6 +45,30 @@ router.post('/chat', async (req: Request, res: Response) => {
     });
   }
 });
+
+// Get available agents
+router.get('/agents', (req: Request, res: Response) => {
+  res.json({
+      response: result.response,
+      agent: result.agent,
+      sessionId: result.sessionId,
+      timestamp: new Date().toISOString(),
+      aiActive: aiTeam.isAIActive()
+    });
+});
+
+// Health check for AI system
+router.get('/status', (req: Request, res: Response) => {
+  res.json({
+      response: result.response,
+      agent: result.agent,
+      sessionId: result.sessionId,
+      timestamp: new Date().toISOString(),
+      aiActive: aiTeam.isAIActive()
+    });
+});
+
+export default router;
 
 // Get session history
 router.get('/session/:sessionId', (req: Request, res: Response) => {
@@ -69,27 +93,7 @@ router.get('/sessions', (req: Request, res: Response) => {
   }
 });
 
-// Get available agents
-router.get('/agents', (req: Request, res: Response) => {
-  res.json({
-    agents: aiTeam.getAvailableAgents(),
-    aiActive: aiTeam.isAIActive()
-  });
-});
-
 // Get agent specializations
 router.get('/agents/specializations', (req: Request, res: Response) => {
   res.json(aiTeam.getAgentSpecializations());
 });
-
-// Health check for AI system
-router.get('/status', (req: Request, res: Response) => {
-  res.json({
-    status: 'ready',
-    aiActive: aiTeam.isAIActive(),
-    agents: aiTeam.getAvailableAgents().length,
-    timestamp: new Date().toISOString()
-  });
-});
-
-export default router;
