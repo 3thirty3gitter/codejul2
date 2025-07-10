@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { applicationBuilderAPI } from "../services/applicationBuilderAPI";
 
 interface Message {
@@ -57,20 +57,6 @@ export default function ApplicationBuilderChat() {
       };
 
       setMessages(prev => [...prev, planMessage]);
-
-      // Start the build process
-      const buildResponse = await applicationBuilderAPI.buildProject(response.id);
-      
-      const buildMessage: Message = {
-        id: generateMessageId(),
-        content: `?? **Build Complete!** Generated ${buildResponse.files?.length || 0} files for your project.`,
-        type: 'build',
-        timestamp: Date.now(),
-        projectId: response.id,
-        files: buildResponse.files
-      };
-
-      setMessages(prev => [...prev, buildMessage]);
 
     } catch (error) {
       const errorMessage: Message = {
@@ -175,3 +161,4 @@ export default function ApplicationBuilderChat() {
     </div>
   );
 }
+

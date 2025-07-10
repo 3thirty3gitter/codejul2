@@ -1,98 +1,71 @@
-const API_BASE_URL = 'http://localhost:5000';
+﻿class ApplicationBuilderAPI {
+  private baseURL = 'http://localhost:5000/api/application-builder';
+  private currentSessionId: string | null = null;
 
-interface APIResponse<T = any> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
-}
-
-class ApplicationBuilderAPI {
-  private async makeRequest<T = any>(
-    endpoint: string,
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    data?: any
-  ): Promise<T> {
+  async generatePlan(description: string) {
     try {
-      const url = `${API_BASE_URL}${endpoint}`;
-      
-      const config: RequestInit = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
+      const body = {
+        description,
+        ...(this.currentSessionId && { sessionId: this.currentSessionId })
       };
 
-      // Only add body for non-GET requests and ensure proper JSON stringification
-      if (method !== 'GET' && data !== undefined) {
-        if (typeof data === 'string') {
-          // If data is already a string, wrap it in an object
-          config.body = JSON.stringify({ content: data });
-        } else {
-          // Ensure the data is properly serialized
-          config.body = JSON.stringify(data);
-        }
-      }
+      console.log(`📝 Frontend request: ${description}${this.currentSessionId ? ` (Session: ${this.currentSessionId})` : ' (New Session)'}`);
 
-      console.log(`?? Making ${method} request to:`, url);
-      console.log('?? Request body:', config.body);
+      const response = await fetch(`${this.baseURL}/generate-plan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
 
-      const response = await fetch(url, config);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`? HTTP ${response.status}:`, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const responseData = await response.json();
-      console.log('?? Response received:', responseData);
+      const result = await response.json();
       
-      return responseData;
+      // Store session ID for future requests (Replit-style persistence)
+      this.updateSessionId(result);
+
+      return result;
     } catch (error) {
-      console.error('? API Request failed:', error);
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Cannot connect to backend server. Is it running on port 5000?');
-      }
+      console.error('API Error:', error);
       throw error;
     }
   }
 
-  async generatePlan(description: string) {
-    if (!description || typeof description !== 'string') {
-      throw new Error('Description must be a non-empty string');
+  private updateSessionId(response: any) {
+    if (response.sessionId) {
+      this.currentSessionId = response.sessionId;
+      console.log(`🧠 Session stored for persistent context: ${this.currentSessionId}`);
     }
-
-    console.log('?? Generating plan for:', description);
-    
-    return this.makeRequest('/api/application-builder/generate-plan', 'POST', {
-      description: description.trim()
-    });
   }
 
-  async buildProject(planId: string) {
-    if (!planId || typeof planId !== 'string') {
-      throw new Error('Plan ID must be a non-empty string');
-    }
-
-    console.log('?? Building project for plan:', planId);
-    
-    return this.makeRequest('/api/application-builder/build', 'POST', {
-      planId: planId.trim()
-    });
+  // Get current session ID
+  getCurrentSessionId(): string | null {
+    return this.currentSessionId;
   }
 
-  async getProject(projectId: string) {
-    if (!projectId || typeof projectId !== 'string') {
-      throw new Error('Project ID must be a non-empty string');
-    }
-
-    return this.makeRequest(`/api/application-builder/project/${projectId}`);
+  // Reset session (for starting completely new projects)
+  resetSession(): void {
+    console.log(`🔄 Session reset: ${this.currentSessionId} → null`);
+    this.currentSessionId = null;
   }
 
-  async listProjects() {
-    return this.makeRequest('/api/application-builder/projects');
+  // Get session details
+  async getSessionDetails(sessionId?: string): Promise<any> {
+    const id = sessionId || this.currentSessionId;
+    if (!id) {
+      throw new Error('No session ID available');
+    }
+
+    const response = await fetch(`${this.baseURL}/session/${id}`);
+    if (!response.ok) {
+      throw new Error(`Failed to get session details: ${response.status}`);
+    }
+
+    return response.json();
   }
 }
 

@@ -1,81 +1,86 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { applicationBuilderService } from '../services/applicationBuilderService';
 
 const router = Router();
 
-// Generate plan endpoint with comprehensive error handling
+// Enhanced generate-plan endpoint with persistent sessions (Replit-style)
 router.post('/generate-plan', async (req: Request, res: Response) => {
   try {
-    console.log('?? Generate plan request received');
-    console.log('?? Request body:', req.body);
-    console.log('?? Body type:', typeof req.body);
-    console.log('?? Body keys:', Object.keys(req.body || {}));
-    
-    // Check if body exists and has description
-    if (!req.body) {
-      console.error('? Request body is undefined');
-      return res.status(400).json({
-        error: 'Request body is missing',
-        message: 'Make sure Content-Type is application/json'
-      });
-    }
-
-    const { description } = req.body;
-    
+    const { description, sessionId } = req.body;
     if (!description) {
-      console.error('? Description field missing from body:', req.body);
-      return res.status(400).json({
-        error: 'Description is required',
-        message: 'Request body must contain a description field',
-        received: req.body
-      });
+      return res.status(400).json({ error: 'Project description is required' });
     }
 
-    if (typeof description !== 'string') {
-      return res.status(400).json({
-        error: 'Description must be a string',
-        received: typeof description
-      });
-    }
-
-    console.log('?? Generating plan for:', description);
+    console.log(`📝 Plan request: ${description}${sessionId ? ` (Session: ${sessionId})` : ' (New Session)'}`);
+    const result = await applicationBuilderService.generatePlan(description, sessionId);
     
-    const plan = await applicationBuilderService.generatePlan(description);
+    console.log(`✅ Plan generated: ${result.name} - Session: ${result.sessionId} (Context preserved)`);
+    res.json(result);
     
-    console.log('? Plan generated successfully:', plan.name);
-    res.json(plan);
   } catch (error) {
-    console.error('? Plan generation error:', error);
-    res.status(500).json({
-      error: 'Failed to generate plan',
-      message: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString()
-    });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Plan generation error:', errorMessage);
+    res.status(500).json({ error: 'Failed to generate plan', message: errorMessage });
   }
 });
 
-// Build project endpoint
-router.post('/build', async (req: Request, res: Response) => {
+// Get session details (for debugging and monitoring)
+router.get('/session/:sessionId', async (req: Request, res: Response) => {
   try {
-    const { planId } = req.body;
+    const { sessionId } = req.params;
+    const session = applicationBuilderService.getSession(sessionId);
     
-    if (!planId || typeof planId !== 'string') {
-      return res.status(400).json({
-        error: 'Plan ID is required and must be a string'
-      });
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
     }
-
-    console.log('?? Building project for plan:', planId);
     
-    const result = await applicationBuilderService.buildProject(planId);
-    
-    res.json(result);
+    console.log(`📊 Session details requested: ${session.projectName}`);
+    res.json(session);
   } catch (error) {
-    console.error('? Build error:', error);
-    res.status(500).json({
-      error: 'Failed to build project',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Failed to get session', message: errorMessage });
+  }
+});
+
+// Update session phase (for phase tracking)
+router.post('/session/:sessionId/phase', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { phase } = req.body;
+    
+    applicationBuilderService.updateSessionPhase(sessionId, phase);
+    console.log(`📋 Phase updated for session ${sessionId}: ${phase}`);
+    res.json({ success: true, sessionId, phase });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Failed to update session phase', message: errorMessage });
+  }
+});
+
+// Add completed step (for progress tracking)
+router.post('/session/:sessionId/step', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { step } = req.body;
+    
+    applicationBuilderService.addCompletedStep(sessionId, step);
+    console.log(`✅ Step completed for session ${sessionId}: ${step}`);
+    res.json({ success: true, sessionId, step });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Failed to add completed step', message: errorMessage });
+  }
+});
+
+// Get system statistics
+router.get('/stats', async (req: Request, res: Response) => {
+  try {
+    const stats = applicationBuilderService.getSessionStats();
+    console.log(`📊 System stats requested: ${stats.totalSessions} sessions, ${stats.activeProjects.length} active projects`);
+    res.json(stats);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Failed to get stats', message: errorMessage });
   }
 });
 
